@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode
 } from "react";
@@ -17,7 +18,10 @@ import type {
   CustomerUser,
   Order,
   Product,
-  UserBenefits
+  ProductPricing,
+  UserBenefits,
+  UserAddress,
+  UserPreferences
 } from "../types";
 import { BASE_PRODUCTS } from "../data/products";
 import { COUPONS } from "../data/coupons";
@@ -41,7 +45,46 @@ const ORDERS_KEY = "ORDERS_V1";
 
 const EMAIL_DUOC_REGEX = /@duoc\.cl$/i;
 const FELICES_CODE = "FELICES50";
-const BDAY_CAKE_ID = "TE001";
+const BDAY_CAKE_ID = "BDAY001";
+const SENIOR_DISCOUNT = 0.5;
+const PROMO_DISCOUNT = 0.1;
+const DEFAULT_SHIPPING_COST = 3000;
+const ADDRESS_LIMIT = 5;
+const SHIPPING_VALUES = [3000, 6000];
+
+const generateAddressId = () => `addr_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+
+const sanitizeIncomingAddresses = (
+  incoming: Array<Partial<UserAddress>>,
+  existing: UserAddress[] | undefined,
+  now: number
+): UserAddress[] => {
+  const map = new Map<string, UserAddress>();
+  incoming.forEach((entry) => {
+    if (!entry) return;
+    const direccion = entry.direccion?.trim();
+    const region = entry.region?.trim();
+    const comuna = entry.comuna?.trim();
+    if (!direccion || !region || !comuna) return;
+    const trimmedId = typeof entry.id === "string" ? entry.id.trim() : "";
+    const id = trimmedId || generateAddressId();
+    const previous = existing?.find((addr) => addr.id === trimmedId);
+    map.set(id, {
+      id,
+      alias: entry.alias?.trim() || undefined,
+      direccion,
+      region,
+      comuna,
+      referencia: entry.referencia?.trim() || undefined,
+      createdAt: previous?.createdAt ?? entry.createdAt ?? now,
+      updatedAt: now
+    });
+  });
+  return Array.from(map.values()).slice(0, ADDRESS_LIMIT);
+};
+
+const normalizeShipCost = (value?: number) =>
+  typeof value === "number" && SHIPPING_VALUES.includes(value) ? value : DEFAULT_SHIPPING_COST;
 
 function normalizeProduct(entry: any): Product | null {
   if (!entry) return null;
@@ -69,7 +112,7 @@ function toAdminRecord(product: Product) {
   return {
     codigo: product.id,
     nombre: product.nombre,
-    precio: product.precio,
+    precio: product.id === BDAY_CAKE_ID ? 0 : product.precio,
     categoria: product.categoria,
     attr: product.attr,
     imagen: image,
@@ -83,7 +126,9 @@ function loadProducts(): Product[] {
   const storedRaw = readJSON<any[]>(ADMIN_PRODUCTS_KEY, []);
   if (!storedRaw.length) {
     writeJSON(ADMIN_PRODUCTS_KEY, BASE_PRODUCTS.map(toAdminRecord));
-    return BASE_PRODUCTS;
+    return BASE_PRODUCTS.map((product) =>
+      product.id === BDAY_CAKE_ID ? { ...product, precio: 0 } : product
+    );
   }
   const baseMap = new Map(BASE_PRODUCTS.map((p) => [p.id, { ...p }]));
   storedRaw
@@ -91,7 +136,8 @@ function loadProducts(): Product[] {
     .filter((p): p is Product => Boolean(p))
     .forEach((p) => {
       const existing = baseMap.get(p.id) || {};
-      baseMap.set(p.id, { ...existing, ...p });
+      const merged = { ...existing, ...p };
+      baseMap.set(p.id, merged.id === BDAY_CAKE_ID ? { ...merged, precio: 0 } : merged);
     });
   return Array.from(baseMap.values());
 }
@@ -167,8 +213,31 @@ type CouponEval = {
   code?: string;
 };
 
+type NotificationKind = "info" | "success" | "error";
+type NotificationMode = "toast" | "dialog";
+
+type NotificationPayload = {
+  message: string;
+  kind?: NotificationKind;
+  mode?: NotificationMode;
+  actionLabel?: string;
+  onAction?: () => void;
+  durationMs?: number;
+};
+
+type AppNotification = {
+  id: string;
+  message: string;
+  kind: NotificationKind;
+  mode: NotificationMode;
+  actionLabel?: string;
+  onAction?: () => void;
+  durationMs?: number;
+};
+
 type ContextValue = {
   products: Product[];
+  storefrontProducts: Product[];
   refreshProducts: () => void;
   upsertProduct: (product: Product) => void;
   removeProduct: (id: string) => void;
@@ -184,8 +253,16 @@ type ContextValue = {
   setCoupon: (code: string) => void;
   evaluateCoupon: (subTotal: number, shipCost: number) => CouponEval;
   benefitsForCart: (items: CartTotals["items"], subTotal: number) => UserBenefits;
+  userDiscountPercent: number;
+  getProductPricing: (product: Product, qty?: number) => ProductPricing;
+  notifications: AppNotification[];
+  showNotification: (payload: NotificationPayload) => void;
+  dismissNotification: (id: string) => void;
   customerSession: CustomerSession | null;
   customers: CustomerUser[];
+  currentCustomer: CustomerUser | null;
+  birthdayRewardEligible: boolean;
+  birthdayRewardAvailable: boolean;
   registerCustomer: (
     payload: Omit<CustomerUser, "createdAt" | "bdayRedeemedYear"> & {
       createdAt?: number;
@@ -212,6 +289,7 @@ type ContextValue = {
   openReceiptWindow: (payload: {
     items: CartTotals["items"];
     subTotal: number;
+    effectiveSubtotal: number;
     benefits: UserBenefits;
     coupon: CouponEval;
     shipCost: number;
@@ -235,12 +313,90 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [adminSession, setAdminSession] = useState<AdminSession | null>(() => loadAdminSession());
   const [orders, setOrders] = useState<Order[]>(() => loadOrders());
   const [comments, setComments] = useState<Record<string, BlogComment[]>>(() => loadComments());
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const notificationTimers = useRef<Record<string, number>>({});
+
+  const currentCustomer = useMemo(() => {
+    if (!customerSession) return null;
+    const email = customerSession.email.toLowerCase();
+    return customers.find((user) => user.email.toLowerCase() === email) || null;
+  }, [customerSession, customers]);
+
+  const birthdayRewardEligible = useMemo(() => {
+    if (!customerSession) return false;
+    if (!EMAIL_DUOC_REGEX.test(customerSession.email || "")) return false;
+    return isBirthdayToday(customerSession.fnac);
+  }, [customerSession]);
+
+  const birthdayRewardAvailable = useMemo(() => {
+    if (!birthdayRewardEligible) return false;
+    const thisYear = new Date().getFullYear();
+    return (customerSession?.bdayRedeemedYear ?? null) !== thisYear;
+  }, [birthdayRewardEligible, customerSession]);
+
+  const storefrontProducts = useMemo(() => {
+    if (birthdayRewardEligible) return products;
+    return products.filter((product) => product.id !== BDAY_CAKE_ID);
+  }, [products, birthdayRewardEligible]);
+
+  const userDiscountPercent = useMemo(() => {
+    if (!customerSession) return 0;
+    const age = computeAge(customerSession.fnac ?? "");
+    if (typeof age === "number" && age > 50) return SENIOR_DISCOUNT;
+    if (customerSession.promoCode === FELICES_CODE || customerSession.felices50) {
+      return PROMO_DISCOUNT;
+    }
+    return 0;
+  }, [customerSession]);
+
+  const getProductPricing = useCallback(
+    (product: Product, qty = 1): ProductPricing => {
+      const quantity = Number.isFinite(qty) ? Math.max(1, Math.floor(qty)) : 1;
+      if (product.id === BDAY_CAKE_ID && birthdayRewardAvailable) {
+        const originalUnitPrice = product.precio;
+        const discountPerUnit = originalUnitPrice;
+        const discountTotal = discountPerUnit * quantity;
+        return {
+          originalUnitPrice,
+          unitPrice: 0,
+          discountPercent: 1,
+          discountPerUnit,
+          originalTotal: originalUnitPrice * quantity,
+          discountTotal,
+          total: 0
+        };
+      }
+      const originalUnitPrice = product.precio;
+      const discountPercent = userDiscountPercent;
+      const unitPrice = discountPercent > 0
+        ? Math.max(0, Math.round(originalUnitPrice * (1 - discountPercent)))
+        : originalUnitPrice;
+      const discountPerUnit = Math.max(0, originalUnitPrice - unitPrice);
+      const originalTotal = originalUnitPrice * quantity;
+      const total = unitPrice * quantity;
+      const discountTotal = discountPerUnit * quantity;
+      return {
+        originalUnitPrice,
+        unitPrice,
+        discountPercent,
+        discountPerUnit,
+        originalTotal,
+        discountTotal,
+        total
+      };
+    },
+    [userDiscountPercent, birthdayRewardAvailable]
+  );
 
   useEffect(() => {
     // Persist cart to a per-user key when possible
-    const key = customerSession?.email ? `${CART_KEY}_${customerSession.email.toLowerCase()}` : CART_KEY;
-    writeJSON(key, cart);
-  }, [cart]);
+    writeJSON(cartStorageKey, cart);
+  }, [cart, cartStorageKey]);
+
+  useEffect(() => {
+    // When the storage key changes (login/logout), load the matching cart
+    setCart(readJSON<CartItem[]>(cartStorageKey, []));
+  }, [cartStorageKey]);
 
   useEffect(() => {
     writeJSON(SHIP_KEY, shippingCost);
@@ -249,6 +405,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     writeJSON(COUPON_KEY, coupon.trim().toUpperCase());
   }, [coupon]);
+
+  const preferredShipping = currentCustomer?.prefs?.defaultShip ?? customerSession?.prefs?.defaultShip;
+  useEffect(() => {
+    const normalized = normalizeShipCost(preferredShipping);
+    setShippingCostState((prev) => (prev === normalized ? prev : normalized));
+  }, [preferredShipping]);
 
   useEffect(() => {
     writeJSON(USERS_KEY, customers);
@@ -277,6 +439,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     writeJSON(BLOG_COMMENTS_KEY, comments);
   }, [comments]);
+
+  useEffect(() => () => {
+    const timers = notificationTimers.current;
+    for (const id of Object.keys(timers)) {
+      window.clearTimeout(timers[id]);
+    }
+  }, []);
 
   useEffect(() => {
     const handler = (event: StorageEvent) => {
@@ -327,12 +496,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setProducts(loadProducts());
   }, []);
 
+  const dismissNotification = useCallback((id: string) => {
+    setNotifications((prev) => prev.filter((entry) => entry.id !== id));
+    const timer = notificationTimers.current[id];
+    if (timer) {
+      window.clearTimeout(timer);
+      delete notificationTimers.current[id];
+    }
+  }, []);
+
+  const showNotification = useCallback(
+    (payload: NotificationPayload) => {
+      const id = `nt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const entry: AppNotification = {
+        id,
+        message: payload.message,
+        kind: payload.kind ?? "info",
+        mode: payload.mode ?? "toast",
+        actionLabel: payload.actionLabel,
+        onAction: payload.onAction,
+        durationMs: payload.durationMs
+      };
+      setNotifications((prev) => [...prev, entry]);
+      if (entry.mode !== "dialog") {
+        const timeout = window.setTimeout(() => {
+          dismissNotification(id);
+        }, entry.durationMs ?? 4000);
+        notificationTimers.current[id] = timeout;
+      }
+    },
+    [dismissNotification]
+  );
+
   const upsertProduct = useCallback(
     (product: Product) => {
       setProducts((prev) => {
         const map = new Map(prev.map((p) => [p.id, p]));
-        map.set(product.id, product);
-        const next = Array.from(map.values());
+        const nextProduct = product.id === BDAY_CAKE_ID ? { ...product, precio: 0 } : product;
+        map.set(product.id, nextProduct);
+        const next = Array.from(map.values()).map((entry) =>
+          entry.id === BDAY_CAKE_ID ? { ...entry, precio: 0 } : entry
+        );
         writeJSON(ADMIN_PRODUCTS_KEY, next.map(toAdminRecord));
         return next;
       });
@@ -352,26 +556,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (id: string, qty = 1, msg = "") => {
       const product = products.find((p) => p.id === id);
       if (!product) {
-        window.alert("Este producto ya no está disponible.");
+        showNotification({
+          message: "Este producto ya no está disponible.",
+          kind: "error"
+        });
         return;
       }
       if (product.stock <= 0) {
-        window.alert("Sin stock disponible.");
+        showNotification({
+          message: "Sin stock disponible.",
+          kind: "error"
+        });
+        return;
+      }
+      const isBirthdayCake = product.id === BDAY_CAKE_ID;
+      if (isBirthdayCake && !birthdayRewardAvailable) {
+        showNotification({
+          message: "Ya reclamaste esta torta por tu cumpleaños.",
+          kind: "info",
+          mode: "dialog"
+        });
         return;
       }
       const desired = Math.max(1, Number(qty));
+      let outcome: { addedQty: number; status: "none" | "added" | "partial" | "noStock" } = {
+        addedQty: 0,
+        status: "none"
+      };
       setCart((prev) => {
         const idx = prev.findIndex((item) => item.id === id && (item.msg || "") === msg);
         const currentQty = idx >= 0 ? prev[idx].qty : 0;
-        const remaining = Math.max(0, product.stock - currentQty);
+        const limit = isBirthdayCake ? Math.min(1, product.stock) : product.stock;
+        const remaining = Math.max(0, limit - currentQty);
         if (remaining <= 0) {
-          window.alert("Sin stock disponible.");
+          outcome = { addedQty: 0, status: "noStock" };
           return prev;
         }
         const toAdd = Math.min(desired, remaining);
-        if (toAdd < desired) {
-          window.alert(`Solo quedan ${product.stock} unidad(es). Se agregaron ${toAdd}.`);
+        if (toAdd <= 0) {
+          outcome = { addedQty: 0, status: "noStock" };
+          return prev;
         }
+        outcome = {
+          addedQty: toAdd,
+          status: toAdd < desired ? "partial" : "added"
+        };
         if (idx >= 0) {
           const next = [...prev];
           next[idx] = { ...next[idx], qty: next[idx].qty + toAdd };
@@ -379,25 +608,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         return [...prev, { id, qty: toAdd, msg }];
       });
+      if (outcome.status === "noStock") {
+        showNotification({
+          message: "Sin stock disponible.",
+          kind: "error"
+        });
+        return;
+      }
+      if (outcome.addedQty > 0) {
+        const message =
+          outcome.status === "partial"
+            ? `Solo pudimos agregar ${outcome.addedQty} unidad(es). Stock disponible: ${product.stock}.`
+            : `${product.nombre} añadido al carrito.`;
+        showNotification({
+          message,
+          kind: "success",
+          mode: "dialog",
+          actionLabel: "OK"
+        });
+      }
     },
-    [products]
+    [products, showNotification, birthdayRewardAvailable]
   );
 
   const setCartQty = useCallback(
     (id: string, qty: number, msg = "") => {
       const product = products.find((p) => p.id === id);
       if (!product) return;
-      const desired = Math.max(0, Math.floor(Number.isFinite(qty) ? qty : 0));
-      const max = product.stock;
+      const isBirthdayCake = product.id === BDAY_CAKE_ID;
+      const desiredRaw = Math.floor(Number.isFinite(qty) ? qty : 0);
+      const desired = product.stock > 0 ? Math.max(1, desiredRaw) : 0;
+      const max = isBirthdayCake ? Math.min(1, product.stock) : product.stock;
       const nextQty = Math.min(desired, max);
       if (desired > max) {
-        window.alert(`Stock disponible: ${max}`);
+        showNotification({
+          message: `Stock disponible: ${max}`,
+          kind: "info"
+        });
       }
       setCart((prev) => {
         const idx = prev.findIndex((item) => item.id === id && (item.msg || "") === msg);
         if (idx === -1) return prev;
         const next = [...prev];
-        if (nextQty === 0) {
+        if (nextQty === 0 || (isBirthdayCake && !birthdayRewardAvailable)) {
           next.splice(idx, 1);
         } else {
           next[idx] = { ...next[idx], qty: nextQty };
@@ -405,7 +658,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return next;
       });
     },
-    [products]
+    [products, showNotification, birthdayRewardAvailable]
   );
 
   const removeFromCart = useCallback((id: string, msg = "") => {
@@ -419,14 +672,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .map((item) => {
         const product = products.find((p) => p.id === item.id);
         if (!product) return null;
-        const subtotal = product.precio * item.qty;
-        return { product, qty: item.qty, msg: item.msg, subtotal };
+        const isBirthdayCake = product.id === BDAY_CAKE_ID;
+        const available = Math.max(1, isBirthdayCake ? Math.min(1, product.stock) : product.stock);
+        const qty = Math.min(available, Math.max(1, Math.floor(Number.isFinite(item.qty) ? item.qty : 1)));
+        const pricing = getProductPricing(product, qty);
+        return {
+          product,
+          qty,
+          msg: item.msg,
+          subtotal: pricing.originalTotal,
+          pricing
+        };
       })
       .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
     const subTotal = items.reduce((sum, entry) => sum + entry.subtotal, 0);
+    const effectiveSubtotal = items.reduce((sum, entry) => sum + entry.pricing.total, 0);
+    const discountTotal = items.reduce((sum, entry) => sum + entry.pricing.discountTotal, 0);
     const totalQty = items.reduce((sum, entry) => sum + entry.qty, 0);
-    return { items, subTotal, totalQty };
-  }, [cart, products]);
+    return { items, subTotal, effectiveSubtotal, discountTotal, totalQty };
+  }, [cart, products, getProductPricing]);
 
   const setShippingCost = useCallback((value: number) => {
     setShippingCostState(Math.max(0, Number(value) || 0));
@@ -460,44 +724,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const benefitsForCart = useCallback(
     (items: CartTotals["items"], subTotal: number): UserBenefits => {
-      const session = customerSession;
-      if (!session) {
+      if (!customerSession) {
         return {
           userDisc: 0,
           userLabel: "",
           bdayDisc: 0,
           bdayLabel: "",
           bdayEligible: false,
-          bdayApplied: false
+          bdayApplied: false,
+          freeShipping: false,
+          shippingLabel: ""
         };
       }
-      const thisYear = new Date().getFullYear();
-      const eligibleToday = EMAIL_DUOC_REGEX.test(session.email || "") &&
-        isBirthdayToday(session.fnac) &&
-        (session.bdayRedeemedYear ?? null) !== thisYear;
 
-      const cake = items.find(
-        (item) => item.product.id === BDAY_CAKE_ID || /torta especial de cumpleaños/i.test(item.product.nombre)
-      );
+      const eligibleToday = birthdayRewardEligible;
+      const rewardAvailable = birthdayRewardAvailable;
+
+      const cake = items.find((item) => item.product.id === BDAY_CAKE_ID);
 
       let bdayDisc = 0;
       let bdayLabel = "";
       let bdayApplied = false;
-      if (eligibleToday && cake && cake.qty > 0) {
-        bdayDisc = cake.product.precio;
+      let freeShipping = false;
+      let shippingLabel = "";
+      if (rewardAvailable && cake && cake.qty > 0) {
+        const cakeDiscount = cake.pricing?.discountTotal ?? cake.product.precio * cake.qty;
+        bdayDisc = cakeDiscount;
         bdayLabel = "Beneficio DUOC: Torta de Cumpleaños gratis";
-        bdayApplied = true;
+        bdayApplied = cakeDiscount > 0;
+        const onlyCakeInCart = items.length === 1 && cake.product.id === BDAY_CAKE_ID;
+        if (onlyCakeInCart) {
+          freeShipping = true;
+          shippingLabel = "Envío gratis por tu cumpleaños DUOC";
+        }
       }
 
-      const age = computeAge(session.fnac ?? "");
-      const percent = typeof age === "number" && age > 50
-        ? 0.5
-        : session.promoCode === FELICES_CODE || session.felices50
-          ? 0.1
-          : 0;
+      const percent = userDiscountPercent;
       const base = Math.max(0, subTotal - bdayDisc);
-      const userDisc = Math.round(base * percent);
-      const userLabel = percent ? `Beneficio de usuario (${Math.round(percent * 100)}% OFF)` : "";
+      const discountFromItems = items.reduce((sum, entry) => sum + (entry.pricing?.discountTotal ?? 0), 0);
+      const userDisc = percent > 0 ? Math.min(base, discountFromItems) : 0;
+      const userLabel = percent > 0 ? `Beneficio de usuario (${Math.round(percent * 100)}% OFF)` : "";
 
       return {
         userDisc,
@@ -505,10 +771,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         bdayDisc,
         bdayLabel,
         bdayEligible: eligibleToday,
-        bdayApplied
+        bdayApplied,
+        freeShipping,
+        shippingLabel
       };
     },
-    [customerSession]
+    [birthdayRewardEligible, birthdayRewardAvailable, userDiscountPercent]
   );
 
   const registerCustomer = useCallback<ContextValue["registerCustomer"]>(
@@ -524,6 +792,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: "Este correo ya está registrado." };
       }
       const now = Date.now();
+      const defaultShip = normalizeShipCost(payload.prefs?.defaultShip);
+      const trimmedDireccion = payload.direccion?.trim() || "";
+      const trimmedRegion = payload.region?.trim() || "";
+      const trimmedComuna = payload.comuna?.trim() || "";
+
+      const baseAddress: UserAddress | null =
+        trimmedDireccion && trimmedRegion && trimmedComuna
+          ? {
+              id: generateAddressId(),
+              alias: payload.prefs?.addresses?.[0]?.alias?.trim() || "Dirección principal",
+              direccion: trimmedDireccion,
+              region: trimmedRegion,
+              comuna: trimmedComuna,
+              referencia: payload.prefs?.addresses?.[0]?.referencia?.trim() || undefined,
+              createdAt: now,
+              updatedAt: now
+            }
+          : null;
+
+      let normalizedPrefs: UserPreferences | undefined;
+      const incomingAddresses = payload.prefs?.addresses;
+      const sanitizedAddresses = incomingAddresses?.length
+        ? sanitizeIncomingAddresses(incomingAddresses, undefined, now)
+        : baseAddress
+          ? [baseAddress]
+          : [];
+
+      if (payload.prefs || sanitizedAddresses.length || defaultShip !== DEFAULT_SHIPPING_COST) {
+        const basePrefs = { ...payload.prefs } satisfies UserPreferences;
+        basePrefs.defaultShip = defaultShip;
+        if (sanitizedAddresses.length) {
+          basePrefs.addresses = sanitizedAddresses;
+          const preferredId = basePrefs.primaryAddressId;
+          basePrefs.primaryAddressId = preferredId && sanitizedAddresses.some((addr) => addr.id === preferredId)
+            ? preferredId
+            : sanitizedAddresses[0]?.id;
+        } else {
+          delete basePrefs.addresses;
+          delete basePrefs.primaryAddressId;
+        }
+        normalizedPrefs = basePrefs;
+      }
+
       const nuevo: CustomerUser = {
         run: cleanRun(payload.run),
         tipo: payload.tipo,
@@ -531,17 +842,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         apellidos: payload.apellidos,
         email,
         fnac: payload.fnac,
-        region: payload.region,
-        comuna: payload.comuna,
-        direccion: payload.direccion,
-        phone: payload.phone,
+        region: trimmedRegion,
+        comuna: trimmedComuna,
+        direccion: trimmedDireccion,
+        phone: payload.phone?.trim() || undefined,
         pass: payload.pass,
         promoCode: payload.promoCode?.toUpperCase() || "",
         // FELICES50 is only applied at registration
         felices50: payload.promoCode?.toUpperCase() === FELICES_CODE,
         createdAt: payload.createdAt ?? now,
         bdayRedeemedYear: payload.bdayRedeemedYear ?? null,
-        prefs: payload.prefs
+        prefs: normalizedPrefs
       };
       setCustomers((prev) => [...prev, nuevo]);
       setCustomerSession({
@@ -572,20 +883,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const guest = readJSON<CartItem[]>(CART_KEY, []);
         const userKey = `${CART_KEY}_${normalized}`;
         const existing = readJSON<CartItem[]>(userKey, []);
-        const map = new Map<string, CartItem>();
-        const push = (item: CartItem) => {
-          const key = `${item.id}::${item.msg || ""}`;
-          const prev = map.get(key);
-          if (prev) map.set(key, { ...prev, qty: prev.qty + item.qty });
-          else map.set(key, { ...item });
-        };
-        existing.forEach(push);
-        guest.forEach(push);
-        const merged = Array.from(map.values());
-        writeJSON(userKey, merged);
-        // remove guest cart to avoid duplicates
-        removeKey(CART_KEY);
-        setCart(merged);
+
+        if (!existing.length && guest.length) {
+          const map = new Map<string, CartItem>();
+          guest.forEach((item) => {
+            const key = `${item.id}::${item.msg || ""}`;
+            const prev = map.get(key);
+            if (prev) {
+              map.set(key, { ...prev, qty: prev.qty + item.qty });
+            } else {
+              map.set(key, { ...item });
+            }
+          });
+          const migrated = Array.from(map.values());
+          writeJSON(userKey, migrated);
+          removeKey(CART_KEY);
+          setCart(migrated);
+        } else {
+          setCart(existing);
+          if (!existing.length && guest.length === 0) {
+            removeKey(CART_KEY);
+          }
+        }
       } catch (err) {
         // ignore merge errors
         console.warn("Cart merge failed:", err);
@@ -607,6 +926,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const logoutCustomer = useCallback(() => {
     setCustomerSession(null);
+    setCart([]);
   }, []);
 
   const updateCustomer = useCallback(
@@ -615,15 +935,78 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setCustomers((prev) => {
         const idx = prev.findIndex((u) => u.email.toLowerCase() === customerSession.email.toLowerCase());
         if (idx === -1) return prev;
-        // Prevent enabling FELICES50 via profile edit: only preserve existing felices50
-        const safeUpdates = { ...updates } as Partial<CustomerUser>;
-        if (typeof safeUpdates.promoCode === "string" && safeUpdates.promoCode.toUpperCase() === FELICES_CODE && !prev[idx].felices50) {
-          // ignore attempt to set FELICES50 on edit
-          delete (safeUpdates as any).promoCode;
+        const current = prev[idx];
+        const now = Date.now();
+        const safeUpdates: Partial<CustomerUser> = { ...updates };
+
+        if (
+          typeof safeUpdates.promoCode === "string" &&
+          safeUpdates.promoCode.toUpperCase() === FELICES_CODE &&
+          !current.felices50
+        ) {
+          delete safeUpdates.promoCode;
         }
-        const merged: CustomerUser = { ...prev[idx], ...safeUpdates };
-        // ensure felices50 flag isn't accidentally enabled
-        merged.felices50 = !!prev[idx].felices50;
+
+        if (typeof safeUpdates.nombre === "string") {
+          safeUpdates.nombre = safeUpdates.nombre.trim();
+        }
+        if (typeof safeUpdates.apellidos === "string") {
+          safeUpdates.apellidos = safeUpdates.apellidos.trim();
+        }
+        if (typeof safeUpdates.direccion === "string") {
+          safeUpdates.direccion = safeUpdates.direccion.trim();
+        }
+        if (typeof safeUpdates.phone === "string") {
+          safeUpdates.phone = safeUpdates.phone.trim() || undefined;
+        }
+
+        let nextPrefs: UserPreferences | undefined = current.prefs ? { ...current.prefs } : undefined;
+        if (safeUpdates.prefs) {
+          nextPrefs = { ...nextPrefs, ...safeUpdates.prefs };
+          nextPrefs.defaultShip = normalizeShipCost(nextPrefs.defaultShip);
+
+          if (safeUpdates.prefs.addresses) {
+            const sanitized = sanitizeIncomingAddresses(
+              safeUpdates.prefs.addresses,
+              current.prefs?.addresses,
+              now
+            );
+            nextPrefs.addresses = sanitized.length ? sanitized : undefined;
+          }
+
+          let candidatePrimary = safeUpdates.prefs.primaryAddressId ?? nextPrefs?.primaryAddressId ?? current.prefs?.primaryAddressId;
+          const addressList = nextPrefs?.addresses ?? current.prefs?.addresses ?? [];
+          if (addressList.length) {
+            if (!candidatePrimary || !addressList.some((addr) => addr.id === candidatePrimary)) {
+              candidatePrimary = addressList[0].id;
+            }
+            nextPrefs = {
+              ...nextPrefs,
+              addresses: addressList,
+              primaryAddressId: candidatePrimary
+            };
+            if (candidatePrimary) {
+              const primary = addressList.find((addr) => addr.id === candidatePrimary);
+              if (primary) {
+                if (!safeUpdates.direccion) safeUpdates.direccion = primary.direccion;
+                if (!safeUpdates.region) safeUpdates.region = primary.region;
+                if (!safeUpdates.comuna) safeUpdates.comuna = primary.comuna;
+              }
+            }
+          } else if (nextPrefs) {
+            delete nextPrefs.primaryAddressId;
+          }
+
+          safeUpdates.prefs = nextPrefs;
+        }
+
+        const merged: CustomerUser = {
+          ...current,
+          ...safeUpdates,
+          prefs: safeUpdates.prefs ?? nextPrefs ?? current.prefs
+        };
+        merged.felices50 = !!current.felices50;
+
         const next = [...prev];
         next[idx] = merged;
         setCustomerSession({
@@ -769,7 +1152,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const openReceiptWindow = useCallback<ContextValue["openReceiptWindow"]>(
-    ({ items, subTotal, benefits, coupon, shipCost, total, contactEmail }) => {
+    ({ items, subTotal, effectiveSubtotal, benefits, coupon, shipCost, total, contactEmail }) => {
       const normalizedEmail =
         typeof contactEmail === "string" && contactEmail.trim()
           ? contactEmail.trim()
@@ -779,9 +1162,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           product: entry.product,
           qty: entry.qty,
           msg: entry.msg,
-          subtotal: entry.subtotal
+          subtotal: entry.pricing.total,
+          originalSubtotal: entry.subtotal,
+          unitPrice: entry.pricing.unitPrice,
+          originalUnitPrice: entry.pricing.originalUnitPrice
         })),
         subTotal,
+        effectiveSubtotal,
         benefits,
         coupon,
         shipCost,
@@ -803,6 +1190,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ContextValue>(
     () => ({
       products,
+      storefrontProducts,
       refreshProducts,
       upsertProduct,
       removeProduct,
@@ -818,14 +1206,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setCoupon,
       evaluateCoupon,
       benefitsForCart,
+      userDiscountPercent,
+      getProductPricing,
+      notifications,
+      showNotification,
+      dismissNotification,
       customerSession,
       customers,
+      currentCustomer,
+      birthdayRewardEligible,
+      birthdayRewardAvailable,
       registerCustomer,
       loginCustomer,
       logoutCustomer,
       updateCustomer,
-  upsertCustomer,
-  removeCustomer,
+      upsertCustomer,
+      removeCustomer,
       adminUsers,
       upsertAdminUser,
       removeAdminUser,
@@ -842,6 +1238,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }),
     [
       products,
+      storefrontProducts,
       refreshProducts,
       upsertProduct,
       removeProduct,
@@ -857,16 +1254,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setCoupon,
       evaluateCoupon,
       benefitsForCart,
+      userDiscountPercent,
+      getProductPricing,
+      notifications,
+      showNotification,
+      dismissNotification,
       customerSession,
       customers,
+      currentCustomer,
+      birthdayRewardEligible,
+      birthdayRewardAvailable,
       registerCustomer,
       loginCustomer,
       logoutCustomer,
       updateCustomer,
-  upsertCustomer,
-  removeCustomer,
-  upsertCustomer,
-  removeCustomer,
+      upsertCustomer,
+      removeCustomer,
       adminUsers,
       upsertAdminUser,
       removeAdminUser,

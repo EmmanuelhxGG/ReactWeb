@@ -11,7 +11,7 @@ const SORT_OPTIONS = [
 
 export function ProductosPage() {
   const location = useLocation();
-  const { products } = useAppContext();
+  const { storefrontProducts } = useAppContext();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("__all__");
   const [sort, setSort] = useState<string>("price-asc");
@@ -26,14 +26,14 @@ export function ProductosPage() {
 
   const categories = useMemo(() => {
     const unique = new Set<string>();
-    products.forEach((p) => {
+    storefrontProducts.forEach((p) => {
       if (p.categoria) unique.add(p.categoria);
     });
     return Array.from(unique).sort((a, b) => a.localeCompare(b, "es"));
-  }, [products]);
+  }, [storefrontProducts]);
 
   const filtered = useMemo(() => {
-    let list = products;
+    let list = storefrontProducts;
     if (category !== "__all__") {
       list = list.filter((p) => p.categoria.toLowerCase() === category.toLowerCase());
     }
@@ -52,7 +52,7 @@ export function ProductosPage() {
     if (sort === "price-desc") sorted.sort((a, b) => b.precio - a.precio);
     if (sort === "name-asc") sorted.sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
     return sorted;
-  }, [products, query, category, sort]);
+  }, [storefrontProducts, query, category, sort]);
 
   return (
     <main className="container relleno productos">

@@ -4,12 +4,25 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAppContext } from "../context/AppContext";
 import { REGIONS } from "../data/regions";
 import { computeAge } from "../utils/dates";
+import { formatRun } from "../utils/validators";
 
 const SHIPPING_OPTIONS = [
-  { value: 0, label: "Retiro en tienda (gratis)" },
   { value: 3000, label: "Envío urbano ($3.000)" },
   { value: 6000, label: "Envío regional ($6.000)" }
 ];
+
+const ADDRESS_LIMIT = 5;
+const createAddressId = () => `addr_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+
+type AddressDraft = {
+  id: string;
+  alias: string;
+  direccion: string;
+  region: string;
+  comuna: string;
+  referencia: string;
+  createdAt: number;
+};
 
 const NAME_SANITIZE_REGEX = /[^A-Za-zÁÉÍÓÚáéíóúÑñÜü' -]/g;
 
@@ -18,14 +31,9 @@ const normalizeNameInput = (value: string) =>
 
 export function PerfilPage() {
   const navigate = useNavigate();
-  const { customerSession, customers, updateCustomer, logoutCustomer } = useAppContext();
+  const { customerSession, currentCustomer, updateCustomer, logoutCustomer, showNotification } = useAppContext();
 
-  const currentUser = useMemo(() => {
-    if (!customerSession) return null;
-    return (
-      customers.find((user) => user.email.toLowerCase() === customerSession.email.toLowerCase()) || null
-    );
-  }, [customerSession, customers]);
+  const currentUser = currentCustomer;
 
   const [form, setForm] = useState({
     nombre: "",
@@ -35,10 +43,13 @@ export function PerfilPage() {
     comuna: "",
     phone: "",
     promoCode: "",
-    defaultShip: 0,
-    defaultCoupon: "",
+    defaultShip: SHIPPING_OPTIONS[0].value,
     newsletter: false,
-    saveAddress: false
+    saveAddress: false,
+    addressAlias: "Dirección principal",
+    addressReferencia: "",
+    primaryAddressId: "",
+    primaryAddressCreatedAt: 0
   });
 
   const [passwordForm, setPasswordForm] = useState({
@@ -50,23 +61,67 @@ export function PerfilPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [passErrors, setPassErrors] = useState<Record<string, string>>({});
   const [isEditing, setIsEditing] = useState(false);
+  const [extraAddresses, setExtraAddresses] = useState<AddressDraft[]>([]);
+  const [extraErrors, setExtraErrors] = useState<Record<string, string>>({});
 
   const resetProfileForm = useCallback(() => {
     if (!currentUser) return;
+    const addresses = currentUser.prefs?.addresses ?? [];
+    const primaryStored =
+      addresses.find((address) => address.id === currentUser.prefs?.primaryAddressId) ||
+      addresses[0];
+    const fallbackId = primaryStored?.id || currentUser.prefs?.primaryAddressId || createAddressId();
+    const primaryDraft: AddressDraft = primaryStored
+      ? {
+          id: primaryStored.id,
+          alias: primaryStored.alias || "Dirección principal",
+          direccion: primaryStored.direccion,
+          region: primaryStored.region,
+          comuna: primaryStored.comuna,
+          referencia: primaryStored.referencia || "",
+          createdAt: primaryStored.createdAt
+        }
+      : {
+          id: fallbackId,
+          alias: "Dirección principal",
+          direccion: currentUser.direccion || "",
+          region: currentUser.region || "",
+          comuna: currentUser.comuna || "",
+          referencia: "",
+          createdAt: currentUser.createdAt
+        };
+
+    const others = addresses
+      .filter((address) => address.id !== primaryDraft.id)
+      .map<AddressDraft>((address) => ({
+        id: address.id,
+        alias: address.alias || "",
+        direccion: address.direccion,
+        region: address.region,
+        comuna: address.comuna,
+        referencia: address.referencia || "",
+        createdAt: address.createdAt
+      }));
+
     setForm({
       nombre: normalizeNameInput(currentUser.nombre || ""),
       apellidos: normalizeNameInput(currentUser.apellidos || ""),
-      direccion: currentUser.direccion,
-      region: currentUser.region,
-      comuna: currentUser.comuna,
+      direccion: primaryDraft.direccion,
+      region: primaryDraft.region,
+      comuna: primaryDraft.comuna,
       phone: currentUser.phone || "",
       promoCode: currentUser.promoCode || "",
-      defaultShip: currentUser.prefs?.defaultShip ?? 0,
-      defaultCoupon: currentUser.prefs?.defaultCoupon || "",
+      defaultShip: currentUser.prefs?.defaultShip ?? SHIPPING_OPTIONS[0].value,
       newsletter: Boolean(currentUser.prefs?.newsletter),
-      saveAddress: Boolean(currentUser.prefs?.saveAddress)
+      saveAddress: Boolean(currentUser.prefs?.saveAddress),
+      addressAlias: primaryDraft.alias || "Dirección principal",
+      addressReferencia: primaryDraft.referencia,
+      primaryAddressId: primaryDraft.id,
+      primaryAddressCreatedAt: primaryDraft.createdAt
     });
+    setExtraAddresses(others);
     setErrors({});
+    setExtraErrors({});
   }, [currentUser]);
 
   useEffect(() => {
@@ -79,8 +134,102 @@ export function PerfilPage() {
     return list.slice().sort((a, b) => a.localeCompare(b, "es"));
   }, [form.region]);
 
+  const handleExtraChange = (id: string, field: "alias" | "direccion" | "region" | "comuna" | "referencia", value: string) => {
+    setExtraAddresses((prev) =>
+      prev.map((entry) => {
+        if (entry.id !== id) return entry;
+        if (field === "region") {
+          return {
+            ...entry,
+            region: value,
+            comuna: entry.region === value ? entry.comuna : ""
+          };
+        }
+        return { ...entry, [field]: value };
+      })
+    );
+    setExtraErrors((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const handleRemoveExtra = (id: string) => {
+    setExtraAddresses((prev) => prev.filter((entry) => entry.id !== id));
+    setExtraErrors((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const handlePrimaryChange = (id: string) => {
+    if (id === form.primaryAddressId) return;
+    const target = extraAddresses.find((entry) => entry.id === id);
+    if (!target) return;
+    const now = Date.now();
+    const snapshot: AddressDraft = {
+      id: form.primaryAddressId || createAddressId(),
+      alias: form.addressAlias || "Dirección principal",
+      direccion: form.direccion,
+      region: form.region,
+      comuna: form.comuna,
+      referencia: form.addressReferencia,
+      createdAt: form.primaryAddressCreatedAt || now
+    };
+    setExtraAddresses((prev) => {
+      const filtered = prev.filter((entry) => entry.id !== id);
+      if (snapshot.direccion.trim()) {
+        filtered.push({
+          ...snapshot,
+          referencia: snapshot.referencia || ""
+        });
+      }
+      return filtered;
+    });
+    setForm((prev) => ({
+      ...prev,
+      direccion: target.direccion,
+      region: target.region,
+      comuna: target.comuna,
+      addressAlias: target.alias || "Dirección principal",
+      addressReferencia: target.referencia || "",
+      primaryAddressId: target.id,
+      primaryAddressCreatedAt: target.createdAt || now
+    }));
+    setExtraErrors((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const addExtraAddress = () => {
+    if (extraAddresses.length >= ADDRESS_LIMIT - 1) {
+      showNotification({ message: "Puedes guardar hasta 5 direcciones.", kind: "info" });
+      return;
+    }
+    const now = Date.now();
+    setExtraAddresses((prev) => [
+      ...prev,
+      {
+        id: createAddressId(),
+        alias: "",
+        direccion: "",
+        region: "",
+        comuna: "",
+        referencia: "",
+        createdAt: now
+      }
+    ]);
+  };
+
   const defaultShipLabel = useMemo(() => {
-    const value = currentUser?.prefs?.defaultShip ?? 0;
+    const value = currentUser?.prefs?.defaultShip ?? SHIPPING_OPTIONS[0].value;
     return SHIPPING_OPTIONS.find((option) => option.value === value)?.label || SHIPPING_OPTIONS[0].label;
   }, [currentUser]);
 
@@ -99,12 +248,22 @@ export function PerfilPage() {
   }
 
   const age = computeAge(currentUser.fnac);
+  const runLabel = formatRun(currentUser.run) || currentUser.run || "Sin RUN registrado";
   const benefitLabel = currentUser.felices50 ? "Beneficio FELICES50 activo" : "Sin beneficio permanente";
-  const addressLine = [currentUser.direccion, currentUser.comuna, currentUser.region]
-    .filter(Boolean)
-    .join(", ") || "Sin dirección registrada";
+  const birthdayLabel = currentUser.fnac
+    ? new Date(currentUser.fnac).toLocaleDateString()
+    : "Sin fecha registrada";
+  const registrationLabel = new Date(currentUser.createdAt).toLocaleDateString();
+  const primaryAddress =
+    currentUser.prefs?.addresses?.find((address) => address.id === currentUser.prefs?.primaryAddressId) ||
+    currentUser.prefs?.addresses?.[0] ||
+    null;
+  const addressLine = primaryAddress
+    ? [primaryAddress.direccion, primaryAddress.comuna, primaryAddress.region].filter(Boolean).join(", ")
+    : [currentUser.direccion, currentUser.comuna, currentUser.region].filter(Boolean).join(", ") || "Sin dirección registrada";
+  const addressCount = currentUser.prefs?.addresses?.length ?? (addressLine !== "Sin dirección registrada" ? 1 : 0);
+  const extraAddressLabel = addressCount > 1 ? ` · ${addressCount - 1} adicionales` : "";
   const phoneLabel = currentUser.phone || "Sin teléfono registrado";
-  const defaultCouponLabel = currentUser.prefs?.defaultCoupon || "Sin cupón por defecto";
   const newsletterLabel = currentUser.prefs?.newsletter ? "Sí" : "No";
   const saveAddressLabel = currentUser.prefs?.saveAddress ? "Sí" : "No";
 
@@ -115,8 +274,9 @@ export function PerfilPage() {
       direccion: "profileDireccion",
       region: "profileRegion",
       comuna: "profileComuna",
-      promoCode: "profilePromo",
-      defaultCoupon: "profileCoupon"
+      addressAlias: "profileAlias",
+      addressReferencia: "profileReferencia",
+      promoCode: "profilePromo"
     };
     const target = map[field];
     if (!target) return;
@@ -131,6 +291,8 @@ export function PerfilPage() {
 
     const normalizedNombre = normalizeNameInput(form.nombre).trim();
     const normalizedApellidos = normalizeNameInput(form.apellidos).trim();
+    const primaryAlias = form.addressAlias.trim();
+    const primaryReference = form.addressReferencia.trim();
 
     if (!normalizedNombre) {
       nextErrors.nombre = "Falta completar los nombres.";
@@ -153,23 +315,54 @@ export function PerfilPage() {
     if (!form.comuna) {
       nextErrors.comuna = "Falta seleccionar una comuna.";
     }
-    if (form.defaultCoupon.length > 20) {
-      nextErrors.defaultCoupon = "Máximo 20 caracteres.";
-    }
     if (form.promoCode && form.promoCode.length > 20) {
       nextErrors.promoCode = "Máximo 20 caracteres.";
     }
+    if (primaryAlias.length > 60) {
+      nextErrors.addressAlias = "Máximo 60 caracteres.";
+    }
+    if (primaryReference.length > 120) {
+      nextErrors.addressReferencia = "Máximo 120 caracteres.";
+    }
 
-    if (Object.keys(nextErrors).length) {
+    const addressIssues: Record<string, string> = {};
+    extraAddresses.forEach((address) => {
+      const trimmedAlias = address.alias.trim();
+      const trimmedDireccion = address.direccion.trim();
+      const trimmedRef = address.referencia.trim();
+      if (!trimmedDireccion) {
+        addressIssues[address.id] = "Falta la dirección.";
+        return;
+      }
+      if (!address.region) {
+        addressIssues[address.id] = "Selecciona una región.";
+        return;
+      }
+      if (!address.comuna) {
+        addressIssues[address.id] = "Selecciona una comuna.";
+        return;
+      }
+      if (trimmedAlias.length > 60) {
+        addressIssues[address.id] = "El nombre es demasiado largo.";
+        return;
+      }
+      if (trimmedRef.length > 120) {
+        addressIssues[address.id] = "La referencia es demasiado larga.";
+      }
+    });
+
+    if (Object.keys(nextErrors).length || Object.keys(addressIssues).length) {
       setErrors(nextErrors);
+      setExtraErrors(addressIssues);
       const ordered: Array<keyof typeof nextErrors> = [
         "nombre",
         "apellidos",
         "direccion",
         "region",
         "comuna",
-        "promoCode",
-        "defaultCoupon"
+        "addressAlias",
+        "addressReferencia",
+        "promoCode"
       ];
       const first = ordered.find((key) => Boolean(nextErrors[key]));
       if (first) {
@@ -178,27 +371,57 @@ export function PerfilPage() {
       return;
     }
     setErrors({});
+    setExtraErrors({});
 
     const promoCode = form.promoCode.trim().toUpperCase();
-    const defaultCoupon = form.defaultCoupon.trim().toUpperCase();
+    const shipValue = SHIPPING_OPTIONS.some((option) => option.value === form.defaultShip)
+      ? form.defaultShip
+      : SHIPPING_OPTIONS[0].value;
+    const now = Date.now();
+    const primaryId = form.primaryAddressId || createAddressId();
+    const primaryAddress = {
+      id: primaryId,
+      alias: primaryAlias || undefined,
+      direccion: form.direccion.trim(),
+      region: form.region,
+      comuna: form.comuna,
+      referencia: primaryReference || undefined,
+      createdAt: form.primaryAddressCreatedAt || now,
+      updatedAt: now
+    };
+    const extrasPayload = extraAddresses.map((address) => {
+      const trimmedAlias = address.alias.trim();
+      const trimmedRef = address.referencia.trim();
+      return {
+        id: address.id || createAddressId(),
+        alias: trimmedAlias || undefined,
+        direccion: address.direccion.trim(),
+        region: address.region,
+        comuna: address.comuna,
+        referencia: trimmedRef || undefined,
+        createdAt: address.createdAt || now,
+        updatedAt: now
+      };
+    });
+    const addressesPayload = [primaryAddress, ...extrasPayload].slice(0, ADDRESS_LIMIT);
 
     updateCustomer({
       nombre: normalizedNombre,
       apellidos: normalizedApellidos,
-      direccion: form.direccion.trim(),
-      region: form.region,
-      comuna: form.comuna,
+      direccion: primaryAddress.direccion,
+      region: primaryAddress.region,
+      comuna: primaryAddress.comuna,
       phone: form.phone.trim() || undefined,
       promoCode,
       prefs: {
-        defaultShip: form.defaultShip,
-        defaultCoupon: defaultCoupon || undefined,
+        defaultShip: shipValue,
         newsletter: form.newsletter,
-        saveAddress: form.saveAddress
+        saveAddress: form.saveAddress,
+        addresses: addressesPayload,
+        primaryAddressId: primaryAddress.id
       }
     });
-
-    window.alert("Datos actualizados correctamente.");
+    showNotification({ message: "Datos actualizados correctamente.", kind: "success" });
     setIsEditing(false);
   };
 
@@ -230,7 +453,7 @@ export function PerfilPage() {
     setPassErrors({});
     updateCustomer({ pass: passwordForm.next });
     setPasswordForm({ current: "", next: "", confirm: "" });
-    window.alert("Contraseña actualizada.");
+    showNotification({ message: "Contraseña actualizada.", kind: "success" });
   };
 
   const handleLogout = () => {
@@ -256,7 +479,7 @@ export function PerfilPage() {
           <div>
             <h1 className="section-title font-brand profile-header__title">Mi perfil</h1>
             <p className="muted">
-              RUN <strong>{currentUser.run}</strong> · Registrado el {new Date(currentUser.createdAt).toLocaleDateString()}
+              RUN <strong>{runLabel}</strong> · Registrado el {registrationLabel}
             </p>
           </div>
           <div className="profile-actions profile-actions--right">
@@ -265,28 +488,34 @@ export function PerfilPage() {
                 Modificar datos
               </button>
             ) : (
-              <button className="btn btn--ghost" type="button" onClick={handleCancelEdit}>
+              <button className="btn" type="button" onClick={handleCancelEdit}>
                 Cancelar edición
               </button>
             )}
           </div>
         </header>
 
-        <section className="profile-body">
+        <section className="profile-content">
           {!isEditing ? (
-            <article className="profile-view-card active" aria-live="polite">
-              <header>
-                <h2 className="profile-card__title">{currentUser.nombre} {currentUser.apellidos}</h2>
+            <article className="profile-summary profile-view-card active">
+              <div className="profile-summary__meta">
                 <p className="profile-inline">{currentUser.email}</p>
                 <p className="profile-inline">
                   {age ? `${age} años` : "Sin fecha registrada"} · {benefitLabel}
                   {currentUser.promoCode ? ` · Cupón: ${currentUser.promoCode}` : ""}
                 </p>
-              </header>
-              <ul>
+              </div>
+
+              <p className="profile-inline muted">Aplicaremos automáticamente los beneficios disponibles para tus compras.</p>
+
+              <ul className="profile-summary__list">
+                <li>
+                  <strong>Cumpleaños</strong>
+                  <span>{birthdayLabel}</span>
+                </li>
                 <li>
                   <strong>Dirección</strong>
-                  <span>{addressLine}</span>
+                  <span>{addressLine}{extraAddressLabel}</span>
                 </li>
                 <li>
                   <strong>Teléfono</strong>
@@ -297,10 +526,6 @@ export function PerfilPage() {
                   <span>{defaultShipLabel}</span>
                 </li>
                 <li>
-                  <strong>Cupón por defecto</strong>
-                  <span>{defaultCouponLabel}</span>
-                </li>
-                <li>
                   <strong>Novedades</strong>
                   <span>{newsletterLabel}</span>
                 </li>
@@ -309,9 +534,11 @@ export function PerfilPage() {
                   <span>{saveAddressLabel}</span>
                 </li>
               </ul>
+
               <div className="profile-summary__note">
                 Mantén tus datos actualizados para agilizar las compras y recibir beneficios especiales.
               </div>
+
               <div className="profile-actions profile-actions--right">
                 <Link className="btn" to="/carrito">
                   Revisar carrito
@@ -357,6 +584,35 @@ export function PerfilPage() {
                       aria-invalid={Boolean(errors.apellidos)}
                     />
                     <small className={`help${errors.apellidos ? " help--error" : ""}`}>{errors.apellidos}</small>
+                  </div>
+                </div>
+
+                <div className="profile-field-row">
+                  <div className="profile-field">
+                    <label htmlFor="profileAlias">Nombre para la dirección (opcional)</label>
+                    <input
+                      id="profileAlias"
+                      className={`form-control${errors.addressAlias ? " form-control--error" : ""}`}
+                      type="text"
+                      value={form.addressAlias}
+                      onChange={(event) => setForm((prev) => ({ ...prev, addressAlias: event.target.value }))}
+                      maxLength={60}
+                      aria-invalid={Boolean(errors.addressAlias)}
+                    />
+                    <small className={`help${errors.addressAlias ? " help--error" : ""}`}>{errors.addressAlias}</small>
+                  </div>
+                  <div className="profile-field">
+                    <label htmlFor="profileReferencia">Referencia (opcional)</label>
+                    <input
+                      id="profileReferencia"
+                      className={`form-control${errors.addressReferencia ? " form-control--error" : ""}`}
+                      type="text"
+                      value={form.addressReferencia}
+                      onChange={(event) => setForm((prev) => ({ ...prev, addressReferencia: event.target.value }))}
+                      maxLength={120}
+                      aria-invalid={Boolean(errors.addressReferencia)}
+                    />
+                    <small className={`help${errors.addressReferencia ? " help--error" : ""}`}>{errors.addressReferencia}</small>
                   </div>
                 </div>
 
@@ -422,6 +678,119 @@ export function PerfilPage() {
                   </div>
                 </div>
 
+                <section className="profile-addresses">
+                  <header className="profile-addresses__head">
+                    <h3 className="profile-card__subtitle">Direcciones adicionales</h3>
+                    <span className="muted small">Puedes guardar hasta {ADDRESS_LIMIT} direcciones en total.</span>
+                  </header>
+
+                  {extraAddresses.length === 0 ? (
+                    <p className="muted small">No tienes direcciones adicionales guardadas.</p>
+                  ) : (
+                    extraAddresses.map((address, index) => {
+                      const communes = (REGIONS[address.region] || []).slice().sort((a, b) => a.localeCompare(b, "es"));
+                      return (
+                        <div className="profile-address-card" key={address.id}>
+                          <div className="profile-address-card__head">
+                            <strong>Dirección #{index + 2}</strong>
+                            <div className="profile-address-card__actions">
+                              <button
+                                className="btn btn--ghost btn-sm"
+                                type="button"
+                                onClick={() => handlePrimaryChange(address.id)}
+                              >
+                                Usar como principal
+                              </button>
+                              <button
+                                className="btn btn--ghost btn-sm"
+                                type="button"
+                                onClick={() => handleRemoveExtra(address.id)}
+                              >
+                                Eliminar
+                              </button>
+                            </div>
+                          </div>
+                          <div className="profile-field-row">
+                            <div className="profile-field">
+                              <label>Nombre (opcional)</label>
+                              <input
+                                className="form-control"
+                                type="text"
+                                value={address.alias}
+                                onChange={(event) => handleExtraChange(address.id, "alias", event.target.value)}
+                                maxLength={60}
+                              />
+                            </div>
+                            <div className="profile-field">
+                              <label>Referencia (opcional)</label>
+                              <input
+                                className="form-control"
+                                type="text"
+                                value={address.referencia}
+                                onChange={(event) => handleExtraChange(address.id, "referencia", event.target.value)}
+                                maxLength={120}
+                              />
+                            </div>
+                          </div>
+                          <div className="profile-field">
+                            <label>Dirección</label>
+                            <input
+                              className="form-control"
+                              type="text"
+                              value={address.direccion}
+                              onChange={(event) => handleExtraChange(address.id, "direccion", event.target.value)}
+                              maxLength={300}
+                            />
+                          </div>
+                          <div className="profile-field-row">
+                            <div className="profile-field">
+                              <label>Región</label>
+                              <select
+                                className="form-control"
+                                value={address.region}
+                                onChange={(event) => handleExtraChange(address.id, "region", event.target.value)}
+                              >
+                                <option value="">Seleccione</option>
+                                {regionOptions.map((region) => (
+                                  <option key={region} value={region}>
+                                    {region}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="profile-field">
+                              <label>Comuna</label>
+                              <select
+                                className="form-control"
+                                value={address.comuna}
+                                onChange={(event) => handleExtraChange(address.id, "comuna", event.target.value)}
+                                disabled={!address.region}
+                              >
+                                <option value="">Seleccione</option>
+                                {communes.map((comuna) => (
+                                  <option key={comuna} value={comuna}>
+                                    {comuna}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                          <small className={`help${extraErrors[address.id] ? " help--error" : ""}`}>{extraErrors[address.id] || ""}</small>
+                        </div>
+                      );
+                    })
+                  )}
+
+                  <button
+                    className="btn btn--ghost btn-sm"
+                    type="button"
+                    onClick={addExtraAddress}
+                    disabled={extraAddresses.length >= ADDRESS_LIMIT - 1}
+                  >
+                    Añadir dirección
+                  </button>
+                </section>
+
                 <div className="profile-field-row">
                   <div className="profile-field">
                     <label htmlFor="profilePhone">Teléfono</label>
@@ -444,11 +813,9 @@ export function PerfilPage() {
                       value={form.promoCode}
                       onChange={(event) => setForm((prev) => ({ ...prev, promoCode: event.target.value.toUpperCase() }))}
                       maxLength={20}
-                      disabled
+                      aria-invalid={Boolean(errors.promoCode)}
                     />
-                    <small className={`help${errors.promoCode ? " help--error" : ""}`}>
-                      {errors.promoCode || "El código FELICES50 sólo se aplica al registrarte. Puedes editar sólo el cupón por defecto."}
-                    </small>
+                    <small className={`help${errors.promoCode ? " help--error" : ""}`}>{errors.promoCode}</small>
                   </div>
                 </div>
 
@@ -467,19 +834,6 @@ export function PerfilPage() {
                         </option>
                       ))}
                     </select>
-                  </div>
-                  <div className="profile-field">
-                    <label htmlFor="profileCoupon">Cupón por defecto</label>
-                    <input
-                      id="profileCoupon"
-                      className={`form-control${errors.defaultCoupon ? " form-control--error" : ""}`}
-                      type="text"
-                      value={form.defaultCoupon}
-                      onChange={(event) => setForm((prev) => ({ ...prev, defaultCoupon: event.target.value.toUpperCase() }))}
-                      maxLength={20}
-                      aria-invalid={Boolean(errors.defaultCoupon)}
-                    />
-                    <small className={`help${errors.defaultCoupon ? " help--error" : ""}`}>{errors.defaultCoupon}</small>
                   </div>
                 </div>
 

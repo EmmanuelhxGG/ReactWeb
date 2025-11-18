@@ -6,8 +6,8 @@ import { BLOG_POSTS } from "../data/blogPosts";
 const FEATURED_IDS = ["TC001", "PSA002", "PSA001"];
 
 export function InicioPage() {
-  const { products } = useAppContext();
-  const featured = products.filter((p) => FEATURED_IDS.includes(p.id)).slice(0, 3);
+  const { storefrontProducts, getProductPricing } = useAppContext();
+  const featured = storefrontProducts.filter((p) => FEATURED_IDS.includes(p.id)).slice(0, 3);
   const [blog1, blog2] = BLOG_POSTS;
 
   return (
@@ -39,7 +39,23 @@ export function InicioPage() {
               />
               <div className="product-card__info">
                 <h3 className="product-card__title">{product.nombre}</h3>
-                <p className="product-card__price">{formatMoney(product.precio)}</p>
+                {(() => {
+                  const pricing = getProductPricing(product, 1);
+                  const hasDiscount = pricing.discountPerUnit > 0;
+                  const displayPrice = pricing.unitPrice === 0 ? "Gratis" : formatMoney(pricing.unitPrice);
+                  return (
+                    <p className="product-card__price">
+                      {hasDiscount ? (
+                        <>
+                          <s className="muted">{formatMoney(pricing.originalUnitPrice)}</s>
+                          <strong>{displayPrice}</strong>
+                        </>
+                      ) : (
+                        <strong>{displayPrice}</strong>
+                      )}
+                    </p>
+                  );
+                })()}
                 <Link className="btn btn--tertiary" to={`/producto/${product.id}`}>
                   Ver detalle
                 </Link>

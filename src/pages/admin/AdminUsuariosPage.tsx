@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useAppContext } from "../../context/AppContext";
 import { computeAge } from "../../utils/dates";
+import { formatRun } from "../../utils/validators";
 
 export function AdminUsuariosPage() {
   const { customers, adminUsers, upsertCustomer, removeCustomer } = useAppContext();
@@ -45,7 +46,7 @@ export function AdminUsuariosPage() {
         key: `cliente-${user.email}`,
         nombre: user.nombre,
         apellidos: user.apellidos,
-        run: user.run,
+        run: formatRun(user.run) || user.run || "-",
         correo: user.email,
         region: user.region,
         comuna: user.comuna,
@@ -61,7 +62,7 @@ export function AdminUsuariosPage() {
         key: `staff-${user.correo}`,
         nombre: user.nombre,
         apellidos: user.apellidos,
-        run: user.run,
+        run: formatRun(user.run) || user.run || "-",
         correo: user.correo,
         region: user.region || "-",
         comuna: user.comuna || "-",
@@ -122,7 +123,7 @@ export function AdminUsuariosPage() {
             {staffUsers.map((user) => (
               <tr key={user.correo}>
                 <td>{user.nombre} {user.apellidos}</td>
-                <td>{user.run}</td>
+                <td>{formatRun(user.run) || user.run || "-"}</td>
                 <td>{user.correo}</td>
                 <td>{user.rol}</td>
                 <td>{user.region || "-"}</td>

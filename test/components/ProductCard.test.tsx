@@ -4,8 +4,17 @@ import { describe, it, expect, vi } from "vitest";
 
 // Simular el hook `useAppContext` para poder afirmar que `addToCart` es llamado
 const mockAdd = vi.fn();
+const mockGetPricing = vi.fn(() => ({
+  originalUnitPrice: 10000,
+  unitPrice: 10000,
+  discountPercent: 0,
+  discountPerUnit: 0,
+  originalTotal: 10000,
+  discountTotal: 0,
+  total: 10000
+}));
 vi.mock("../../src/context/AppContext", () => ({
-  useAppContext: () => ({ addToCart: mockAdd })
+  useAppContext: () => ({ addToCart: mockAdd, getProductPricing: mockGetPricing })
 }));
 
 // Simular `Link` de `react-router-dom` para evitar importar internals del router
@@ -38,6 +47,8 @@ describe("ProductCard component", () => {
     render(<ProductCard product={product} />);
 
     expect(screen.getByText(/Torta X/)).toBeDefined();
+    expect(mockGetPricing).toHaveBeenCalledWith(product, 1);
+
     const btn = screen.getByRole("button", { name: /Añadir/i });
     fireEvent.click(btn);
     expect(mockAdd).toHaveBeenCalledWith("P1", 1);

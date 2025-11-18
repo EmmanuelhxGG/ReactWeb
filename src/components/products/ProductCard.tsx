@@ -8,7 +8,10 @@ type Props = {
 };
 
 export function ProductCard({ product }: Props) {
-  const { addToCart } = useAppContext();
+  const { addToCart, getProductPricing } = useAppContext();
+  const pricing = getProductPricing(product, 1);
+  const hasDiscount = pricing.discountPerUnit > 0;
+  const displayPrice = pricing.unitPrice === 0 ? "Gratis" : formatMoney(pricing.unitPrice);
 
   return (
     <article className="tarjeta" data-id={product.id}>
@@ -20,7 +23,14 @@ export function ProductCard({ product }: Props) {
       </Link>
       <p className="tarjeta__atributo">{product.attr || "\u00A0"}</p>
       <p className="tarjeta__precio">
-        <strong>{formatMoney(product.precio)}</strong>
+        {hasDiscount ? (
+          <>
+            <s className="muted">{formatMoney(pricing.originalUnitPrice)}</s>
+            <strong>{displayPrice}</strong>
+          </>
+        ) : (
+          <strong>{displayPrice}</strong>
+        )}
       </p>
       <button
         className="btn btn--fantasma boton-a\u00f1adir-carrito"

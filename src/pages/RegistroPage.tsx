@@ -1,31 +1,44 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppContext } from "../context/AppContext";
 import { REGIONS } from "../data/regions";
-import { computeAge } from "../utils/dates";
-import { cleanRun, isEmailAllowed, isRunValid } from "../utils/validators";
+import { computeAge, parseLocalDate } from "../utils/dates";
+import { cleanRun, formatRun, isEmailAllowed, isRunValid } from "../utils/validators";
 
 const SHIPPING_OPTIONS = [
-  { value: 0, label: "Retiro en tienda (gratis)" },
   { value: 3000, label: "Envío urbano ($3.000)" },
   { value: 6000, label: "Envío regional ($6.000)" }
 ];
+const DEFAULT_SHIP_VALUE = SHIPPING_OPTIONS[0]?.value ?? 0;
 
 const NAME_SANITIZE_REGEX = /[^A-Za-zÁÉÍÓÚáéíóúÑñÜü' -]/g;
 
 const sanitizeNameInput = (value: string) =>
   value.replace(NAME_SANITIZE_REGEX, " ").replace(/\s{2,}/g, " ");
 
+const RUN_MAX_LENGTH = 9;
+const MIN_BIRTH_YEAR = 1915;
+const MAX_BIRTH_YEAR = 2025;
+const MIN_BIRTHDATE = `${MIN_BIRTH_YEAR}-01-01`;
+const MAX_BIRTHDATE = `${MAX_BIRTH_YEAR}-12-31`;
+const MIN_BIRTHDATE_VALUE = parseLocalDate(MIN_BIRTHDATE)!;
+const MAX_BIRTHDATE_VALUE = parseLocalDate(MAX_BIRTHDATE)!;
+const MIN_AGE = 18;
+const MAX_AGE = 110;
+
 export function RegistroPage() {
   const navigate = useNavigate();
   const { registerCustomer } = useAppContext();
 
-  const [run, setRun] = useState("");
+  const [runValue, setRunValue] = useState("");
+  const [runDisplay, setRunDisplay] = useState("");
+  const [runTouched, setRunTouched] = useState(false);
   const [nombres, setNombres] = useState("");
   const [apellidos, setApellidos] = useState("");
   const [email, setEmail] = useState("");
   const [fecha, setFecha] = useState("");
+  const [birthTouched, setBirthTouched] = useState(false);
   const [region, setRegion] = useState("");
   const [comuna, setComuna] = useState("");
   const [direccion, setDireccion] = useState("");
@@ -33,11 +46,113 @@ export function RegistroPage() {
   const [pass, setPass] = useState("");
   const [pass2, setPass2] = useState("");
   const [promo, setPromo] = useState("");
-  const [defaultShip, setDefaultShip] = useState(0);
-  const [defaultCoupon, setDefaultCoupon] = useState("");
+  const [defaultShip, setDefaultShip] = useState(DEFAULT_SHIP_VALUE);
   const [newsletter, setNewsletter] = useState(false);
   const [saveAddress, setSaveAddress] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const validateRunValue = useCallback((value: string): string => {
+    if (!value) return "Falta completar el RUN.";
+    if (value.length < 7) return "RUN incompleto.";
+    if (!isRunValid(value)) return "RUN inválido, verifica el dígito verificador.";
+    return "";
+  }, []);
+
+  const syncRunError = useCallback(
+    (value: string, force = false) => {
+      if (!runTouched && !force) return;
+      const message = validateRunValue(value);
+      setErrors((prev) => {
+        const next = { ...prev };
+        if (message) {
+          next.run = message;
+        } else {
+          delete next.run;
+        }
+        return next;
+      });
+    },
+    [runTouched, validateRunValue]
+  );
+
+  const validateBirthdate = useCallback((value: string): string => {
+    if (!value) return "Falta completar la fecha de nacimiento.";
+    if (value.length < 10) return "";
+    const parsedBirth = parseLocalDate(value);
+    if (!parsedBirth) return "Fecha inválida.";
+    if (parsedBirth < MIN_BIRTHDATE_VALUE) return "Fecha inválida: máximo 110 años.";
+    if (parsedBirth > MAX_BIRTHDATE_VALUE) return `La fecha debe ser hasta ${MAX_BIRTH_YEAR}.`;
+    const age = computeAge(value);
+    if (typeof age !== "number") return "Fecha inválida.";
+    if (age < MIN_AGE) return "Debes tener 18 años o más.";
+    if (age > MAX_AGE) return "Fecha inválida: máximo 110 años.";
+    return "";
+  }, []);
+
+  const setBirthError = useCallback((message: string) => {
+    setErrors((prev) => {
+      if (message) {
+        if (prev.fecha === message) return prev;
+        return { ...prev, fecha: message };
+      }
+      if (!prev.fecha) return prev;
+      const { fecha: _omit, ...rest } = prev;
+      return rest;
+    });
+  }, []);
+
+  const clampBirthdate = useCallback((value: string) => {
+    if (!value) return "";
+    const parsedBirth = parseLocalDate(value);
+    if (!parsedBirth) return value;
+    if (parsedBirth < MIN_BIRTHDATE_VALUE) return MIN_BIRTHDATE;
+    if (parsedBirth > MAX_BIRTHDATE_VALUE) return MAX_BIRTHDATE;
+    const age = computeAge(value);
+    if (typeof age === "number" && age > MAX_AGE) return MIN_BIRTHDATE;
+    return value;
+  }, []);
+
+  const handleRunChange = (value: string) => {
+    const cleaned = cleanRun(value).slice(0, RUN_MAX_LENGTH);
+    setRunValue(cleaned);
+    setRunDisplay(cleaned);
+    if (!runTouched && cleaned.length > 0) {
+      setRunTouched(true);
+    }
+    syncRunError(cleaned);
+  };
+
+  const handleRunBlur = () => {
+    if (!runTouched) {
+      setRunTouched(true);
+    }
+    syncRunError(runValue, true);
+    setRunDisplay(runValue ? formatRun(runValue) : "");
+  };
+
+  const handleRunFocus = () => {
+    setRunDisplay(runValue);
+  };
+
+  const handleBirthdateChange = (value: string) => {
+    setFecha(value);
+    if (!birthTouched && value) {
+      setBirthTouched(true);
+    }
+    if (birthTouched) {
+      setBirthError(validateBirthdate(value));
+    }
+  };
+
+  const handleBirthdateBlur = () => {
+    if (!birthTouched) {
+      setBirthTouched(true);
+    }
+    const message = validateBirthdate(fecha);
+    const corrected = clampBirthdate(fecha);
+    setFecha(corrected);
+    setBirthError(message);
+  };
 
   const regionOptions = useMemo(() => Object.keys(REGIONS).sort((a, b) => a.localeCompare(b, "es")), []);
   const comunaOptions = useMemo(() => {
@@ -68,8 +183,9 @@ export function RegistroPage() {
   const validate = () => {
     const next: Record<string, string> = {};
 
-    if (!isRunValid(run)) {
-      next.run = run ? "RUN inválido (7-9 caracteres, sin puntos ni guion)." : "Falta completar el RUN.";
+    const runMessage = validateRunValue(runValue);
+    if (runMessage) {
+      next.run = runMessage;
     }
     const nombresNormalized = sanitizeNameInput(nombres).trim();
     const apellidosNormalized = sanitizeNameInput(apellidos).trim();
@@ -104,22 +220,14 @@ export function RegistroPage() {
     if (!comuna) {
       next.comuna = "Falta seleccionar una comuna.";
     }
-    if (!fecha) {
-      next.fecha = "Falta completar la fecha de nacimiento.";
-    } else {
-      const age = computeAge(fecha);
-      if (typeof age !== "number") {
-        next.fecha = "Fecha inválida.";
-      } else if (age < 18) {
-        next.fecha = "Debes ser mayor de edad (18+).";
-      } else if (age > 110) {
-        next.fecha = "Ingresa una fecha real (máximo 110 años).";
-      }
+    const birthMessage = validateBirthdate(fecha);
+    if (birthMessage) {
+      next.fecha = birthMessage;
     }
     if (!pass) {
       next.pass = "Falta ingresar una contraseña.";
-    } else if (pass.length < 4 || pass.length > 10) {
-      next.pass = "Debe tener entre 4 y 10 caracteres.";
+    } else if (pass.length < 8 || pass.length > 20) {
+      next.pass = "Debe tener entre 8 y 20 caracteres.";
     }
     if (!pass2) {
       next.pass2 = "Confirma tu contraseña.";
@@ -161,7 +269,7 @@ export function RegistroPage() {
     const apellidosNormalized = sanitizeNameInput(apellidos).trim();
 
     const result = registerCustomer({
-      run,
+      run: runValue,
       tipo: "Cliente",
       nombre: nombresNormalized,
       apellidos: apellidosNormalized,
@@ -175,7 +283,6 @@ export function RegistroPage() {
       promoCode: promo.trim().toUpperCase() || undefined,
       prefs: {
         defaultShip,
-        defaultCoupon: defaultCoupon.trim().toUpperCase() || undefined,
         newsletter,
         saveAddress
       }
@@ -207,8 +314,10 @@ export function RegistroPage() {
               id="run"
               className={`form-control${errors.run ? " form-control--error" : ""}`}
               type="text"
-              value={run}
-              onChange={(event) => setRun(cleanRun(event.target.value))}
+              value={runDisplay}
+              onChange={(event) => handleRunChange(event.target.value)}
+              onBlur={handleRunBlur}
+              onFocus={handleRunFocus}
               required
               autoComplete="off"
               aria-invalid={Boolean(errors.run)}
@@ -276,14 +385,15 @@ export function RegistroPage() {
                 type="date"
                 className={`form-control${errors.fecha ? " form-control--error" : ""}`}
                 value={fecha}
-                onChange={(event) => setFecha(event.target.value)}
+                onChange={(event) => handleBirthdateChange(event.target.value)}
+                onBlur={handleBirthdateBlur}
+                min={MIN_BIRTHDATE}
+                max={MAX_BIRTHDATE}
                 required
                 autoComplete="bday"
                 aria-invalid={Boolean(errors.fecha)}
               />
-              <small className={`help${errors.fecha ? " help--error" : ""}`}>
-                {errors.fecha || "Necesaria para 50% 50+ y regalo de cumpleaños."}
-              </small>
+              {errors.fecha && <small className="help help--error">{errors.fecha}</small>}
             </div>
           </div>
 
@@ -355,8 +465,8 @@ export function RegistroPage() {
                 className={`form-control${errors.pass ? " form-control--error" : ""}`}
                 value={pass}
                 onChange={(event) => setPass(event.target.value)}
-                minLength={4}
-                maxLength={10}
+                minLength={8}
+                maxLength={20}
                 required
                 autoComplete="new-password"
                 aria-invalid={Boolean(errors.pass)}
@@ -371,8 +481,8 @@ export function RegistroPage() {
                 className={`form-control${errors.pass2 ? " form-control--error" : ""}`}
                 value={pass2}
                 onChange={(event) => setPass2(event.target.value)}
-                minLength={4}
-                maxLength={10}
+                minLength={8}
+                maxLength={20}
                 required
                 autoComplete="new-password"
                 aria-invalid={Boolean(errors.pass2)}
@@ -414,57 +524,41 @@ export function RegistroPage() {
             Preferencias de compra
           </h3>
 
-          <div className="form-group grid-2">
-            <div>
-              <label htmlFor="prefShip">Envío por defecto</label>
-              <select
-                id="prefShip"
-                className="form-control"
-                value={defaultShip}
-                onChange={(event) => setDefaultShip(Number(event.target.value))}
-              >
-                {SHIPPING_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <small className="help">Se usará en el carrito si no has elegido otro.</small>
-            </div>
+          <div className="form-group">
+            <label htmlFor="prefShip">Envío por defecto</label>
+            <select
+              id="prefShip"
+              className="form-control"
+              value={defaultShip}
+              onChange={(event) => setDefaultShip(Number(event.target.value))}
+            >
+              {SHIPPING_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <small className="help">Se usará en el carrito si no has elegido otro.</small>
+          </div>
 
-            <div>
-              <label htmlFor="prefCoupon">Cupón por defecto (opcional)</label>
+          <div className="form-group">
+            <div className="chk">
               <input
-                id="prefCoupon"
-                className="form-control"
-                type="text"
-                value={defaultCoupon}
-                onChange={(event) => setDefaultCoupon(event.target.value)}
-                placeholder="ENVIOGRATIS, 5000OFF..."
-                maxLength={20}
+                id="prefNewsletter"
+                type="checkbox"
+                checked={newsletter}
+                onChange={(event) => setNewsletter(event.target.checked)}
               />
-              <small className="help">Se aplicará automáticamente si está vacío el cupón del carrito.</small>
+              <label htmlFor="prefNewsletter">Quiero recibir promociones por email</label>
             </div>
-
-            <div className="form-group span-2">
-              <div className="chk">
-                <input
-                  id="prefNewsletter"
-                  type="checkbox"
-                  checked={newsletter}
-                  onChange={(event) => setNewsletter(event.target.checked)}
-                />
-                <label htmlFor="prefNewsletter">Quiero recibir promociones por email</label>
-              </div>
-              <div className="chk">
-                <input
-                  id="prefSaveAddr"
-                  type="checkbox"
-                  checked={saveAddress}
-                  onChange={(event) => setSaveAddress(event.target.checked)}
-                />
-                <label htmlFor="prefSaveAddr">Guardar dirección para próximos pedidos</label>
-              </div>
+            <div className="chk" style={{ marginTop: "8px" }}>
+              <input
+                id="prefSaveAddr"
+                type="checkbox"
+                checked={saveAddress}
+                onChange={(event) => setSaveAddress(event.target.checked)}
+              />
+              <label htmlFor="prefSaveAddr">Guardar dirección para próximos pedidos</label>
             </div>
           </div>
 

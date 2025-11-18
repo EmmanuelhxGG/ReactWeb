@@ -9,6 +9,20 @@ export function cleanRun(run: string): string {
   return run.toUpperCase().replace(RUN_CLEAN, "");
 }
 
+export function formatRun(run: string): string {
+  const cleaned = cleanRun(run);
+  if (cleaned.length <= 1) return cleaned;
+  const body = cleaned.slice(0, -1);
+  const dv = cleaned.slice(-1);
+  const groups: string[] = [];
+  for (let i = body.length; i > 0; i -= 3) {
+    const start = Math.max(i - 3, 0);
+    groups.unshift(body.slice(start, i));
+  }
+  const formattedBody = groups.join(".");
+  return formattedBody ? `${formattedBody}-${dv}` : cleaned;
+}
+
 export function isRunValid(run: string): boolean {
   const cleaned = cleanRun(run);
   if (cleaned.length < 7 || cleaned.length > 9) return false;

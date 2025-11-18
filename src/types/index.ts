@@ -16,11 +16,33 @@ export type CartItem = {
   msg?: string;
 };
 
+export type ProductPricing = {
+  originalUnitPrice: number;
+  unitPrice: number;
+  discountPercent: number;
+  discountPerUnit: number;
+  originalTotal: number;
+  discountTotal: number;
+  total: number;
+};
+
+export type UserAddress = {
+  id: string;
+  alias?: string;
+  direccion: string;
+  region: string;
+  comuna: string;
+  referencia?: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type UserPreferences = {
   defaultShip?: number;
-  defaultCoupon?: string;
   newsletter?: boolean;
   saveAddress?: boolean;
+  addresses?: UserAddress[];
+  primaryAddressId?: string;
 };
 
 export type CustomerUser = {
@@ -83,8 +105,11 @@ export type CartTotals = {
     qty: number;
     msg?: string;
     subtotal: number;
+    pricing: ProductPricing;
   }>;
   subTotal: number;
+  effectiveSubtotal: number;
+  discountTotal: number;
   totalQty: number;
 };
 
@@ -95,6 +120,8 @@ export type UserBenefits = {
   bdayLabel: string;
   bdayEligible: boolean;
   bdayApplied: boolean;
+  freeShipping: boolean;
+  shippingLabel: string;
 };
 
 export type BlogComment = {

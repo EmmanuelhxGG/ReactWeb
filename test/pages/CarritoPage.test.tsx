@@ -9,7 +9,28 @@ const mockClearCart = vi.fn();
 const mockUpsertProduct = vi.fn();
 vi.mock("../../src/context/AppContext", () => ({
   useAppContext: () => ({
-    cartTotals: { items: [ { product: { id: 'P1', nombre: 'T1', precio: 1000, categoria: 'C', attr: '', img: '', stock: 5, stockCritico: 0 }, qty: 1, subtotal: 1000 } ], subTotal: 1000, totalQty: 1 },
+    cartTotals: {
+      items: [
+        {
+          product: { id: "P1", nombre: "T1", precio: 1000, categoria: "C", attr: "", img: "", stock: 5, stockCritico: 0 },
+          qty: 1,
+          subtotal: 1000,
+          pricing: {
+            originalUnitPrice: 1000,
+            unitPrice: 1000,
+            discountPercent: 0,
+            discountPerUnit: 0,
+            originalTotal: 1000,
+            discountTotal: 0,
+            total: 1000
+          }
+        }
+      ],
+      subTotal: 1000,
+      effectiveSubtotal: 1000,
+      discountTotal: 0,
+      totalQty: 1
+    },
     removeFromCart: vi.fn(),
     setCartQty: vi.fn(),
     clearCart: mockClearCart,
@@ -18,7 +39,16 @@ vi.mock("../../src/context/AppContext", () => ({
     coupon: '',
     setCoupon: vi.fn(),
     evaluateCoupon: () => ({ valid: false, discount: 0, shipAfter: 0 }),
-    benefitsForCart: () => ({ userDisc: 0, userLabel: '', bdayDisc: 0, bdayLabel: '', bdayEligible: false, bdayApplied: false }),
+    benefitsForCart: () => ({
+      userDisc: 0,
+      userLabel: '',
+      bdayDisc: 0,
+      bdayLabel: '',
+      bdayEligible: false,
+      bdayApplied: false,
+      freeShipping: false,
+      shippingLabel: ''
+    }),
     customerSession: { email: 'a@a.com', nombre: 'A' },
     updateCustomer: mockUpdateCustomer,
     openReceiptWindow: mockOpenReceipt,

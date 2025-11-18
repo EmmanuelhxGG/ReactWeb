@@ -151,6 +151,18 @@ export const BASE_PRODUCTS: Product[] = [
     descripcion: "Personalizable con decoraciones y mensajes únicos."
   },
   {
+    id: "BDAY001",
+    nombre: "Torta Individual de Cumpleaños DUOC",
+    precio: 25000,
+    categoria: "Beneficios DUOC",
+    attr: "Porción individual",
+    img: "/img/torta_individual_cumpleaños.png",
+    stock: 12,
+    stockCritico: 3,
+    descripcion:
+      "Pastel individual con vela y decoración festiva, reservado como beneficio de cumpleaños para estudiantes y colaboradores DUOC."
+  },
+  {
     id: "TE002",
     nombre: "Torta Especial de Boda",
     precio: 60000,

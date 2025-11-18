@@ -5,9 +5,12 @@ import { timeAgo } from "../../utils/timeAgo";
 
 interface Props {
   postId: string;
+  title?: string;
+  emptyMessage?: string;
+  placeholder?: string;
 }
 
-export function CommentsSection({ postId }: Props) {
+export function CommentsSection({ postId, title, emptyMessage, placeholder }: Props) {
   const {
     comments,
     customerSession,
@@ -16,6 +19,9 @@ export function CommentsSection({ postId }: Props) {
     deleteComment
   } = useAppContext();
   const list = comments[postId] || [];
+  const sectionTitle = title || "Comentarios";
+  const emptyLabel = emptyMessage || "Aún no hay comentarios. ¡Sé el primero!";
+  const inputPlaceholder = placeholder || "¿Qué te pareció este artículo?";
 
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
@@ -60,9 +66,9 @@ export function CommentsSection({ postId }: Props) {
 
   return (
     <section className="comments">
-      <h2 className="section-title">Comentarios</h2>
+      <h2 className="section-title">{sectionTitle}</h2>
       <div className="comments__list">
-        {list.length === 0 && <p className="muted">Aún no hay comentarios. ¡Sé el primero!</p>}
+        {list.length === 0 && <p className="muted">{emptyLabel}</p>}
         {list.map((comment) => {
           const mine = myEmail && comment.ownerId === myEmail;
           return (
@@ -140,7 +146,7 @@ export function CommentsSection({ postId }: Props) {
               maxLength={300}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              placeholder="¿Qué te pareció este artículo?"
+              placeholder={inputPlaceholder}
             />
             <div style={{ display: "flex", gap: "10px", alignItems: "center", marginTop: "6px" }}>
               <button className="btn btn--primary" type="submit">

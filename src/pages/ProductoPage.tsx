@@ -2,15 +2,21 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAppContext } from "../context/AppContext";
 import { formatMoney } from "../utils/format";
-import { computeAge, isBirthdayToday } from "../utils/dates";
+import { CommentsSection } from "../components/blog/CommentsSection";
 
-const BDAY_CAKE_ID = "TE001";
+const BDAY_CAKE_ID = "BDAY001";
 
 export function ProductoPage() {
   const navigate = useNavigate();
   const { productId } = useParams<{ productId: string }>();
-  const { products, addToCart, customerSession } = useAppContext();
-  const product = products.find((p) => p.id === productId);
+  const {
+    storefrontProducts,
+    addToCart,
+    getProductPricing,
+    birthdayRewardAvailable,
+    birthdayRewardEligible
+  } = useAppContext();
+  const product = storefrontProducts.find((p) => p.id === productId);
 
   const [qty, setQty] = useState<number>(1);
   const [customMessage, setCustomMessage] = useState<string>("");
@@ -28,36 +34,26 @@ export function ProductoPage() {
   }
 
   const isCake = /torta/i.test(product.nombre);
-  const maxQty = Math.max(0, product.stock);
+  const isBirthdayProduct = product.id === BDAY_CAKE_ID;
+  const maxQty = Math.max(0, isBirthdayProduct ? Math.min(1, product.stock) : product.stock);
 
-  const percentDiscount = useMemo(() => {
-    if (!customerSession) return 0;
-    const age = computeAge(customerSession.fnac ?? "") ?? null;
-    if (typeof age === "number" && age > 50) return 0.5;
-    if (customerSession.promoCode === "FELICES50" || customerSession.felices50) return 0.1;
-    return 0;
-  }, [customerSession]);
+  const usesBirthdayCake = isBirthdayProduct && birthdayRewardAvailable;
+  const allowsCustomMessage = isCake && product.id !== BDAY_CAKE_ID;
 
-  const eligibleBirthday = useMemo(() => {
-    if (!customerSession) return false;
-    const thisYear = new Date().getFullYear();
-    const alreadyRedeemed = customerSession.bdayRedeemedYear === thisYear;
-    return !alreadyRedeemed && /@duoc\.cl$/i.test(customerSession.email) && isBirthdayToday(customerSession.fnac);
-  }, [customerSession]);
+  const unitPricing = useMemo(() => getProductPricing(product, 1), [getProductPricing, product]);
+  const hasUserDiscount = unitPricing.discountPerUnit > 0;
+  const discountedPrice = usesBirthdayCake ? 0 : unitPricing.unitPrice;
+  const displayPrice = discountedPrice === 0 ? "Gratis" : formatMoney(discountedPrice);
 
-  const usesBirthdayCake = eligibleBirthday && product.id === BDAY_CAKE_ID;
-
-  const discountedPrice = usesBirthdayCake
-    ? 0
-    : Math.round(product.precio * (1 - percentDiscount));
-
-  const related = products
+  const related = storefrontProducts
     .filter((p) => p.categoria === product.categoria && p.id !== product.id)
     .slice(0, 4);
 
   const handleAdd = () => {
     if (maxQty <= 0) return;
-    addToCart(product.id, qty, customMessage.trim());
+    const safeQty = Math.min(qty, Math.max(1, maxQty));
+    const message = allowsCustomMessage ? customMessage.trim() : "";
+    addToCart(product.id, safeQty, message);
   };
 
   const finalUrl = useMemo(() => {
@@ -117,26 +113,36 @@ export function ProductoPage() {
 
       <section className="pdp">
         <div className="pdp__gallery">
-          <img id="heroImg" src={product.img || "/img/placeholder.png"} alt={product.nombre} />
+          <figure className="pdp__hero">
+            <img id="heroImg" src={product.img || "/img/placeholder.png"} alt={product.nombre} />
+          </figure>
         </div>
 
         <div className="pdp__info">
           <h1>{product.nombre}</h1>
           {product.attr && <p className="muted">• {product.attr}</p>}
           <div className="pdp__price">
-            {percentDiscount > 0 && !usesBirthdayCake ? (
+            {hasUserDiscount && !usesBirthdayCake ? (
               <>
                 <s className="muted">{formatMoney(product.precio)}</s>
-                <strong>{formatMoney(discountedPrice)}</strong>
+                <strong>{displayPrice}</strong>
               </>
             ) : (
-              <strong>{formatMoney(discountedPrice)}</strong>
+              <strong>{displayPrice}</strong>
             )}
-            {usesBirthdayCake && <span className="badge">Beneficio cumpleaños</span>}
+            {usesBirthdayCake && <span className="badge" style={{ marginLeft: 8 }}>Beneficio cumpleaños</span>}
+            {isBirthdayProduct && birthdayRewardEligible && !birthdayRewardAvailable && (
+              <span className="badge badge--muted" style={{ marginLeft: 8 }}>Beneficio ya utilizado este año</span>
+            )}
           </div>
           <p id="pLong">
             {product.descripcion || "Deliciosa preparación de la casa, ideal para tus celebraciones."}
           </p>
+          {usesBirthdayCake && (
+            <p className="muted small">
+              Beneficio exclusivo: la torta es gratis y el envío se bonifica cuando es el único producto de tu carrito.
+            </p>
+          )}
           <p id="pStock" className="muted">
             {maxQty > 0 ? `Stock disponible: ${maxQty}` : "Sin stock"}
           </p>
@@ -152,14 +158,25 @@ export function ProductoPage() {
               max={Math.max(1, maxQty)}
               value={qty}
               onChange={(event) => {
-                const value = Number(event.target.value) || 1;
-                setQty(Math.min(Math.max(1, value), Math.max(1, maxQty)));
+                const rawValue = event.target.value;
+                if (!rawValue) {
+                  setQty(1);
+                  return;
+                }
+                const parsed = Number.parseInt(rawValue, 10);
+                if (Number.isNaN(parsed)) {
+                  setQty(1);
+                  return;
+                }
+                const upper = Math.max(1, maxQty);
+                const clamped = Math.min(Math.max(1, parsed), upper);
+                setQty(clamped);
               }}
               disabled={maxQty <= 0}
             />
           </div>
 
-          {isCake && (
+          {allowsCustomMessage && (
             <div id="customBox" className="pdp__custom">
               <label htmlFor="customMsg">Mensaje para la torta</label>
               <textarea
@@ -199,6 +216,15 @@ export function ProductoPage() {
         </div>
       </section>
 
+      <section className="product-comments">
+        <CommentsSection
+          postId={`product:${product.id}`}
+          title="Opiniones del producto"
+          emptyMessage="Sé el primero en contar tu experiencia con este producto."
+          placeholder="Cuéntanos cómo te fue con este producto..."
+        />
+      </section>
+
       {related.length > 0 && (
         <section className="related" aria-labelledby="relatedTitle">
           <h2 id="relatedTitle" className="section-title">
@@ -214,9 +240,23 @@ export function ProductoPage() {
                   {item.nombre}
                 </Link>
                 <p className="tarjeta__atributo">{item.attr || "\u00A0"}</p>
-                <p className="tarjeta__precio">
-                  <strong>{formatMoney(item.precio)}</strong>
-                </p>
+                {(() => {
+                  const relPricing = getProductPricing(item, 1);
+                  const relHasDiscount = relPricing.discountPerUnit > 0;
+                  const relDisplay = relPricing.unitPrice === 0 ? "Gratis" : formatMoney(relPricing.unitPrice);
+                  return (
+                    <p className="tarjeta__precio">
+                      {relHasDiscount ? (
+                        <>
+                          <s className="muted">{formatMoney(relPricing.originalUnitPrice)}</s>
+                          <strong>{relDisplay}</strong>
+                        </>
+                      ) : (
+                        <strong>{relDisplay}</strong>
+                      )}
+                    </p>
+                  );
+                })()}
                 <Link className="btn btn--fantasma" to={`/producto/${encodeURIComponent(item.id)}`}>
                   Ver detalle
                 </Link>

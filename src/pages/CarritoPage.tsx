@@ -1,15 +1,23 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAppContext } from "../context/AppContext";
 import { formatMoney } from "../utils/format";
 
 const SHIPPING_OPTIONS = [
-  { value: 0, label: "Retiro en tienda (gratis)" },
   { value: 3000, label: "Envío urbano ($3.000)" },
   { value: 6000, label: "Envío regional ($6.000)" }
 ];
 
 const SIMPLE_EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+type AddressOption = {
+  id: string;
+  label: string;
+  direccion: string;
+  region: string;
+  comuna: string;
+  referencia?: string;
+};
 
 export function CarritoPage() {
   const {
@@ -24,6 +32,7 @@ export function CarritoPage() {
     evaluateCoupon,
     benefitsForCart,
     customerSession,
+    currentCustomer,
     updateCustomer,
     openReceiptWindow,
     products,
@@ -32,15 +41,83 @@ export function CarritoPage() {
     updateOrders
   } = useAppContext();
 
-  const { items, subTotal } = cartTotals;
+  const { items, subTotal, effectiveSubtotal } = cartTotals;
+  const isCartEmpty = items.length === 0;
   const [guestInfo, setGuestInfo] = useState({ nombre: "", email: "" });
   const [guestErrors, setGuestErrors] = useState<{ nombre?: string; email?: string }>({});
 
+  const addressOptions = useMemo<AddressOption[]>(() => {
+    if (!currentCustomer) return [];
+    const stored = currentCustomer.prefs?.addresses;
+    if (stored && stored.length) {
+      return stored.map((address) => ({
+        id: address.id,
+        label: address.alias?.trim() || address.direccion,
+        direccion: address.direccion,
+        region: address.region,
+        comuna: address.comuna,
+        referencia: address.referencia?.trim() || undefined
+      }));
+    }
+    if (currentCustomer.direccion && currentCustomer.region && currentCustomer.comuna) {
+      return [
+        {
+          id: currentCustomer.prefs?.primaryAddressId || `legacy-${currentCustomer.run}`,
+          label: "Dirección registrada",
+          direccion: currentCustomer.direccion,
+          region: currentCustomer.region,
+          comuna: currentCustomer.comuna
+        }
+      ];
+    }
+    return [];
+  }, [currentCustomer]);
+
+  const primaryId = currentCustomer?.prefs?.primaryAddressId;
+  const [selectedAddressId, setSelectedAddressId] = useState<string>("");
+
+  useEffect(() => {
+    if (!addressOptions.length) {
+      setSelectedAddressId("");
+      return;
+    }
+    const fallbackId = primaryId && addressOptions.some((option) => option.id === primaryId)
+      ? primaryId
+      : addressOptions[0]?.id || "";
+    setSelectedAddressId((prev) => (prev === fallbackId ? prev : fallbackId));
+  }, [addressOptions, primaryId]);
+
+  const selectedAddress = useMemo(
+    () => addressOptions.find((option) => option.id === selectedAddressId) || null,
+    [addressOptions, selectedAddressId]
+  );
+
   const benefits = useMemo(() => benefitsForCart(items, subTotal), [benefitsForCart, items, subTotal]);
   const baseAfterBenefits = Math.max(0, subTotal - benefits.bdayDisc - benefits.userDisc);
-  const couponInfo = evaluateCoupon(baseAfterBenefits, shippingCost);
-  const effectiveShip = couponInfo.valid ? couponInfo.shipAfter : shippingCost;
+  const shipBeforeCoupons = benefits.freeShipping ? 0 : shippingCost;
+  const couponInfo = evaluateCoupon(baseAfterBenefits, shipBeforeCoupons);
+  const effectiveShip = benefits.freeShipping
+    ? 0
+    : couponInfo.valid
+      ? couponInfo.shipAfter
+      : shipBeforeCoupons;
   const total = Math.max(0, baseAfterBenefits - (couponInfo.valid ? couponInfo.discount : 0) + effectiveShip);
+
+  const handleShipChange = (value: number) => {
+    if (benefits.freeShipping) return;
+    setShippingCost(value);
+    if (currentCustomer && currentCustomer.prefs?.defaultShip !== value) {
+      updateCustomer({ prefs: { defaultShip: value } });
+    }
+  };
+
+  const handleAddressChange = (id: string) => {
+    setSelectedAddressId(id);
+    if (!currentCustomer) return;
+    updateCustomer({
+      prefs: { primaryAddressId: id }
+    });
+  };
 
   const handleCheckout = () => {
     if (!items.length) return;
@@ -63,6 +140,7 @@ export function CarritoPage() {
     openReceiptWindow({
       items,
       subTotal,
+      effectiveSubtotal,
       benefits,
       coupon: couponInfo,
       shipCost: effectiveShip,
@@ -103,34 +181,39 @@ export function CarritoPage() {
     clearCart();
   };
 
-  if (!items.length) {
-    return (
-      <div className="container" style={{ padding: "32px 0" }}>
-        <p>Tu carrito está vacío.</p>
-        <Link className="btn btn--primary" to="/productos">
-          Ir a productos
-        </Link>
-      </div>
-    );
-  }
-
   return (
     <div className="container" id="cartPage">
       <div className="cart-layout">
         <section>
-          <table className="cart-table">
-            <thead>
-              <tr>
-                <th className="w-50">Producto</th>
-                <th className="ta-right">Precio</th>
-                <th className="ta-center">Cant.</th>
-                <th className="ta-right">Subtotal</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={`${item.product.id}-${item.msg || ""}`}>
+          {isCartEmpty ? (
+            <div className="cart-empty">
+              <p className="cart-empty__title">Tu carrito está vacío.</p>
+              <p className="muted small">Puedes seguir explorando nuestros productos y volver cuando quieras.</p>
+              <Link className="btn btn--primary" to="/productos">
+                Ver catálogo
+              </Link>
+            </div>
+          ) : (
+            <table className="cart-table">
+              <thead>
+                <tr>
+                  <th className="w-50">Producto</th>
+                  <th className="ta-right">Precio</th>
+                  <th className="ta-center">Cant.</th>
+                  <th className="ta-right">Subtotal</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => {
+                const hasDiscount = item.pricing.discountPerUnit > 0;
+                const displayUnit = item.pricing.unitPrice;
+                const originalUnit = item.pricing.originalUnitPrice;
+                const originalSubtotal = item.subtotal;
+                const finalSubtotal = item.pricing.total;
+                const maxPerItem = Math.max(1, item.product.stock);
+                return (
+                  <tr key={`${item.product.id}-${item.msg || ""}`}>
                   <td>
                     <div className="cart-prodname">{item.product.nombre}</div>
                     <small className="muted">
@@ -139,20 +222,43 @@ export function CarritoPage() {
                     </small>
                     {item.msg && <div className="small muted">🎂 Mensaje: {item.msg}</div>}
                   </td>
-                  <td className="ta-right">{formatMoney(item.product.precio)}</td>
+                  <td className="ta-right">
+                    {hasDiscount ? (
+                      <>
+                        <s className="muted">{formatMoney(originalUnit)}</s>
+                        <div><strong>{formatMoney(displayUnit)}</strong></div>
+                      </>
+                    ) : (
+                      <strong>{formatMoney(displayUnit)}</strong>
+                    )}
+                  </td>
                   <td className="ta-center">
                     <input
                       className="qty-input"
                       type="number"
                       min={1}
+                      max={maxPerItem}
                       value={item.qty}
-                      onChange={(event) =>
-                        setCartQty(item.product.id, Number(event.target.value), item.msg)
-                      }
+                      onChange={(event) => {
+                        const rawValue = event.target.value;
+                        const parsed = Number.parseInt(rawValue, 10);
+                        const clamped = (() => {
+                          if (Number.isNaN(parsed)) return 1;
+                          return Math.min(Math.max(1, parsed), maxPerItem);
+                        })();
+                        setCartQty(item.product.id, clamped, item.msg);
+                      }}
                     />
                   </td>
                   <td className="ta-right">
-                    <strong>{formatMoney(item.subtotal)}</strong>
+                    {hasDiscount ? (
+                      <>
+                        <s className="muted">{formatMoney(originalSubtotal)}</s>
+                        <div><strong>{formatMoney(finalSubtotal)}</strong></div>
+                      </>
+                    ) : (
+                      <strong>{formatMoney(finalSubtotal)}</strong>
+                    )}
                   </td>
                   <td className="ta-right">
                     <button
@@ -163,13 +269,15 @@ export function CarritoPage() {
                       Eliminar
                     </button>
                   </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </tr>
+                );
+                })}
+              </tbody>
+            </table>
+          )}
 
           <div style={{ marginTop: "10px", display: "flex", gap: "10px" }}>
-            <button className="btn btn--ghost" type="button" onClick={clearCart}>
+            <button className="btn btn--ghost" type="button" onClick={clearCart} disabled={isCartEmpty}>
               Vaciar carrito
             </button>
             <Link className="btn btn--primary" to="/productos">
@@ -220,7 +328,16 @@ export function CarritoPage() {
           )}
           <div className="sum-row">
             <span>Subtotal</span>
-            <strong id="sum-sub">{formatMoney(subTotal)}</strong>
+            <div style={{ marginLeft: "auto", textAlign: "right" }}>
+              {benefits.userDisc > 0 ? (
+                <>
+                  <s className="muted">{formatMoney(subTotal)}</s>
+                  <div id="sum-sub"><strong>{formatMoney(effectiveSubtotal)}</strong></div>
+                </>
+              ) : (
+                <strong id="sum-sub">{formatMoney(subTotal)}</strong>
+              )}
+            </div>
           </div>
           {benefits.bdayDisc > 0 && (
             <div className="sum-row">
@@ -237,20 +354,79 @@ export function CarritoPage() {
 
           <div className="sum-row">
             <label htmlFor="shipping">Envío</label>
-            <select
-              id="shipping"
-              className="input"
-              value={shippingCost}
-              onChange={(event) => setShippingCost(Number(event.target.value))}
-              disabled={couponInfo.valid && couponInfo.code === "ENVIOGRATIS"}
-            >
-              {SHIPPING_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <strong style={{ marginLeft: "auto" }}>{formatMoney(effectiveShip)}</strong>
+            {benefits.freeShipping ? (
+              <>
+                <span className="muted small">
+                  {benefits.shippingLabel || "Beneficio aplicado"}
+                </span>
+                <strong style={{ marginLeft: "auto" }}>{formatMoney(0)}</strong>
+              </>
+            ) : (
+              <>
+                <select
+                  id="shipping"
+                  className="input"
+                  value={shippingCost}
+                  onChange={(event) => handleShipChange(Number(event.target.value))}
+                  disabled={couponInfo.valid && couponInfo.code === "ENVIOGRATIS"}
+                >
+                  {SHIPPING_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <strong style={{ marginLeft: "auto" }}>{formatMoney(effectiveShip)}</strong>
+              </>
+            )}
+          </div>
+
+          <div className="address-summary">
+            <div className="address-summary__header">
+              <span>Dirección de entrega</span>
+              {currentCustomer && addressOptions.length > 1 && (
+                <span className="muted small">{addressOptions.length} guardadas</span>
+              )}
+            </div>
+            {currentCustomer ? (
+              <>
+                {addressOptions.length > 1 && (
+                  <select
+                    className="input"
+                    value={selectedAddressId}
+                    onChange={(event) => handleAddressChange(event.target.value)}
+                  >
+                    {addressOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <div className="address-summary__body">
+                  {selectedAddress ? (
+                    <>
+                      <div>{selectedAddress.direccion}</div>
+                      <div className="muted small">
+                        {selectedAddress.comuna}, {selectedAddress.region}
+                      </div>
+                      {selectedAddress.referencia && (
+                        <div className="muted small">Referencia: {selectedAddress.referencia}</div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="muted small">Agrega direcciones desde tu perfil.</div>
+                  )}
+                </div>
+                <Link className="address-summary__link" to="/perfil">
+                  Administrar direcciones
+                </Link>
+              </>
+            ) : (
+              <div className="address-summary__body muted small">
+                Inicia sesión para guardar y reutilizar tus direcciones.
+              </div>
+            )}
           </div>
 
           <div className="coupon-box">
@@ -290,7 +466,7 @@ export function CarritoPage() {
             <strong id="sum-total">{formatMoney(total)}</strong>
           </div>
 
-          <button className="btn btn--primary btn-block" type="button" onClick={handleCheckout}>
+          <button className="btn btn--primary btn-block" type="button" onClick={handleCheckout} disabled={isCartEmpty}>
             Finalizar compra
           </button>
           <p className="muted small">* No procesa pago real.</p>

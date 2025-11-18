@@ -6,6 +6,9 @@ type ReceiptItem = {
   qty: number;
   msg?: string;
   subtotal: number;
+  originalSubtotal?: number;
+  unitPrice?: number;
+  originalUnitPrice?: number;
 };
 
 type CouponSummary = {
@@ -19,6 +22,7 @@ type CouponSummary = {
 type ReceiptPayload = {
   items: ReceiptItem[];
   subTotal: number;
+  effectiveSubtotal: number;
   shipCost: number;
   total: number;
   benefits: UserBenefits;
@@ -27,13 +31,24 @@ type ReceiptPayload = {
 };
 
 export function buildReceiptHTML(payload: ReceiptPayload): string {
-  const { items, subTotal, shipCost, total, benefits, coupon, currentEmail } = payload;
+  const { items, subTotal, effectiveSubtotal, shipCost, total, benefits, coupon, currentEmail } = payload;
   const { userDisc, userLabel, bdayDisc, bdayLabel } = benefits;
   const rows = items
     .map((item) => {
       const { product, qty, subtotal, msg } = item;
+      const unitPrice = typeof item.unitPrice === "number" ? item.unitPrice : product.precio;
+      const originalUnit = typeof item.originalUnitPrice === "number" ? item.originalUnitPrice : product.precio;
+      const hasUnitDiscount = originalUnit > unitPrice;
+      const originalSubtotal = typeof item.originalSubtotal === "number" ? item.originalSubtotal : product.precio * qty;
+      const hasSubtotalDiscount = originalSubtotal > subtotal;
       const attr = product.attr ? ` • ${product.attr}` : "";
       const extra = msg ? `<div class="small">🎂 Mensaje: ${msg}</div>` : "";
+      const priceColumn = hasUnitDiscount
+        ? `<div><s class="muted">${formatMoney(originalUnit)}</s></div><div><strong>${formatMoney(unitPrice)}</strong></div>`
+        : `<strong>${formatMoney(unitPrice)}</strong>`;
+      const subtotalColumn = hasSubtotalDiscount
+        ? `<div><s class="muted">${formatMoney(originalSubtotal)}</s></div><div><strong>${formatMoney(subtotal)}</strong></div>`
+        : `<strong>${formatMoney(subtotal)}</strong>`;
       return `
         <tr>
           <td>
@@ -41,9 +56,9 @@ export function buildReceiptHTML(payload: ReceiptPayload): string {
             <div class="muted small">${product.categoria}${attr}</div>
             ${extra}
           </td>
-          <td class="ta-right">${formatMoney(product.precio)}</td>
+          <td class="ta-right">${priceColumn}</td>
           <td class="ta-center">${qty}</td>
-          <td class="ta-right"><strong>${formatMoney(subtotal)}</strong></td>
+          <td class="ta-right">${subtotalColumn}</td>
         </tr>
       `;
     })
@@ -51,7 +66,10 @@ export function buildReceiptHTML(payload: ReceiptPayload): string {
 
   const now = new Date();
   const lines: string[] = [];
-  lines.push(`<div class="row"><span>Subtotal</span><strong>${formatMoney(subTotal)}</strong></div>`);
+  const subtotalRow = benefits.userDisc > 0
+    ? `<div class="row"><span>Subtotal</span><span class="price-col"><s class="muted">${formatMoney(subTotal)}</s><strong>${formatMoney(effectiveSubtotal)}</strong></span></div>`
+    : `<div class="row"><span>Subtotal</span><strong>${formatMoney(subTotal)}</strong></div>`;
+  lines.push(subtotalRow);
   if (bdayDisc > 0) {
     lines.push(
       `<div class="row"><span>${bdayLabel || "Beneficio cumpleaños"}</span><strong>- ${formatMoney(bdayDisc)}</strong></div>`
@@ -94,6 +112,7 @@ export function buildReceiptHTML(payload: ReceiptPayload): string {
     .ta-center{text-align:center}
     .sum{margin-top:8px}
     .sum .row{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 0}
+    .price-col{display:flex;flex-direction:column;gap:4px;align-items:flex-end}
     .total{font-weight:700;font-size:18px;border-top:1px dashed #ddd;padding-top:10px;margin-top:6px}
     .btns{display:flex;gap:10px;margin-top:16px}
     button{padding:10px 14px;border-radius:10px;border:1px solid #ddd;cursor:pointer;background:#fff}
