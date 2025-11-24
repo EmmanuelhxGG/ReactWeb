@@ -22,7 +22,7 @@ type ProductCreateFormProps = {
 };
 
 export function ProductCreateForm({ onCreated, onClose }: ProductCreateFormProps) {
-  const { products, upsertProduct } = useAppContext();
+  const { products, upsertProduct, showNotification } = useAppContext();
   const [form, setForm] = useState(INITIAL_FORM);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -83,7 +83,12 @@ export function ProductCreateForm({ onCreated, onClose }: ProductCreateFormProps
     };
 
     upsertProduct(payload);
-    window.alert("Producto creado correctamente");
+    showNotification({
+      message: "Producto creado correctamente",
+      kind: "success",
+      mode: "dialog",
+      actionLabel: "Aceptar"
+    });
     onCreated?.(payload);
     resetForm();
     if (onClose) {

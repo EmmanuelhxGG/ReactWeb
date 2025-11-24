@@ -19,7 +19,7 @@ const ROLES = ["Administrador", "Marketing", "Inventario", "Ventas"];
 
 export function AdminUsuariosNuevoPage() {
   const navigate = useNavigate();
-  const { upsertAdminUser, adminUsers } = useAppContext();
+  const { upsertAdminUser, adminUsers, showNotification } = useAppContext();
   const [form, setForm] = useState(INITIAL_FORM);
   const regionOptions = Object.keys(REGIONS).sort((a, b) => a.localeCompare(b, "es"));
   const comunaOptions = (REGIONS[form.region] || []).slice().sort((a, b) => a.localeCompare(b, "es"));
@@ -66,9 +66,14 @@ export function AdminUsuariosNuevoPage() {
       comuna: form.comuna.trim() || undefined
     });
 
-    window.alert("Usuario administrativo creado");
     setForm(INITIAL_FORM);
-    navigate("/admin/usuarios");
+    showNotification({
+      message: "Usuario administrativo creado",
+      kind: "success",
+      mode: "dialog",
+      actionLabel: "Ir al listado",
+      onAction: () => navigate("/admin/usuarios")
+    });
   };
 
   return (

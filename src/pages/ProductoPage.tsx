@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAppContext } from "../context/AppContext";
 import { formatMoney } from "../utils/format";
@@ -21,6 +21,10 @@ export function ProductoPage() {
   const [qty, setQty] = useState<number>(1);
   const [customMessage, setCustomMessage] = useState<string>("");
   const [shareMsg, setShareMsg] = useState<string>("");
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [productId]);
 
   if (!product) {
     return (

@@ -9,6 +9,7 @@ import {
   type ReactNode
 } from "react";
 import type {
+  AccountStatus,
   AdminSession,
   AdminUser,
   BlogComment,
@@ -17,6 +18,7 @@ import type {
   CustomerSession,
   CustomerUser,
   Order,
+  OrderItem,
   Product,
   ProductPricing,
   UserBenefits,
@@ -93,7 +95,15 @@ function normalizeProduct(entry: any): Product | null {
   ).trim();
   if (!id) return null;
   const baseImg = entry.img || entry.imagen || entry.image || entry.picture || "";
-  const img = baseImg.startsWith("/") ? baseImg : baseImg ? `/${baseImg}` : "";
+  const isDataUrl = typeof baseImg === "string" && (baseImg.startsWith("data:") || baseImg.startsWith("/data:"));
+  const cleanedDataUrl = isDataUrl ? baseImg.replace(/^\//, "") : baseImg;
+  const img = isDataUrl
+    ? cleanedDataUrl
+    : cleanedDataUrl.startsWith("/")
+      ? cleanedDataUrl
+      : cleanedDataUrl
+        ? `/${cleanedDataUrl}`
+        : "";
   return {
     id,
     nombre: entry.nombre || entry.name || entry.title || "",
@@ -108,7 +118,11 @@ function normalizeProduct(entry: any): Product | null {
 }
 
 function toAdminRecord(product: Product) {
-  const image = product.img.startsWith("/") ? product.img.slice(1) : product.img;
+  const image = product.img.startsWith("/data:")
+    ? product.img.slice(1)
+    : product.img.startsWith("/")
+      ? product.img.slice(1)
+      : product.img;
   return {
     codigo: product.id,
     nombre: product.nombre,
@@ -142,8 +156,17 @@ function loadProducts(): Product[] {
   return Array.from(baseMap.values());
 }
 
+function normalizeStatus(status?: AccountStatus): AccountStatus {
+  return status === "inactive" ? "inactive" : "active";
+}
+
 function loadCustomers(): CustomerUser[] {
-  return readJSON<CustomerUser[]>(USERS_KEY, []);
+  const stored = readJSON<CustomerUser[] | null>(USERS_KEY, []);
+  if (!Array.isArray(stored)) return [];
+  return stored.map((user) => ({
+    ...user,
+    status: normalizeStatus(user?.status)
+  }));
 }
 
 function loadCustomerSession(): CustomerSession | null {
@@ -169,13 +192,81 @@ function loadAdminSession(): AdminSession | null {
   return readJSON<AdminSession | null>(ADMIN_SESSION_KEY, null);
 }
 
+const normalizeBenefitList = (value: unknown): string[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  const filtered = value
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+    .filter(Boolean);
+  return filtered.length ? filtered : undefined;
+};
+
+const normalizeOrderItem = (entry: any): OrderItem => {
+  const qtyRaw = Number(entry?.qty ?? 0);
+  const qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? Math.floor(qtyRaw) : 1;
+  const originalUnit = Number(entry?.originalUnitPrice ?? entry?.price ?? entry?.unitPrice ?? 0);
+  const unit = Number(entry?.unitPrice ?? entry?.price ?? originalUnit);
+  const discountPerUnit = Number(entry?.discountPerUnit ?? Math.max(0, originalUnit - unit));
+  const originalSubtotal = Number(entry?.originalSubtotal ?? originalUnit * qty);
+  const subtotal = Number(entry?.subtotal ?? unit * qty);
+  const benefitLabels = normalizeBenefitList(entry?.benefitLabels);
+  return {
+    codigo: String(entry?.codigo || entry?.id || "").trim() || "SIN-COD",
+    nombre: String(entry?.nombre || entry?.name || "Producto").trim() || "Producto",
+    qty,
+    unitPrice: Math.max(0, unit),
+    originalUnitPrice: Math.max(0, originalUnit),
+    discountPerUnit: Math.max(0, discountPerUnit),
+    subtotal: Math.max(0, subtotal),
+    originalSubtotal: Math.max(0, originalSubtotal),
+    benefitLabels
+  } satisfies OrderItem;
+};
+
+function normalizeOrder(entry: any): Order {
+  const items: OrderItem[] = Array.isArray(entry?.items) ? entry.items.map(normalizeOrderItem) : [];
+  const subtotal = Number(entry?.subtotal ?? items.reduce((sum: number, item: OrderItem) => sum + item.originalSubtotal, 0));
+  const shippingCost = Number(entry?.shippingCost ?? 0);
+  const total = Number(entry?.total ?? Math.max(0, subtotal - (entry?.discountTotal ?? 0) + shippingCost));
+  const discountFromItems = items.reduce(
+    (sum: number, item: OrderItem) => sum + Math.max(0, item.originalSubtotal - item.subtotal),
+    0
+  );
+  const discountTotal = Number(entry?.discountTotal ?? discountFromItems);
+  const createdAtRaw = Number(entry?.createdAt ?? entry?.fecha ?? entry?.date ?? Date.now());
+  const createdAt = Number.isFinite(createdAtRaw) && createdAtRaw > 0 ? createdAtRaw : Date.now();
+  const customerEmailValue =
+    typeof entry?.customerEmail === "string" && entry.customerEmail.trim()
+      ? entry.customerEmail.trim()
+      : typeof entry?.contactEmail === "string" && entry.contactEmail.trim()
+        ? entry.contactEmail.trim()
+        : typeof entry?.email === "string" && entry.email.trim()
+          ? entry.email.trim()
+          : undefined;
+  const couponLabelValue = typeof entry?.couponLabel === "string" && entry.couponLabel.trim() ? entry.couponLabel.trim() : undefined;
+  return {
+    id: String(entry?.id || `PED${Date.now()}`).trim(),
+    cliente: String(entry?.cliente || "Cliente").trim(),
+    total: Math.max(0, total),
+    estado: typeof entry?.estado === "string" && entry.estado.trim() ? entry.estado : "Pendiente",
+    items,
+    subtotal: Math.max(0, subtotal),
+    discountTotal: Math.max(0, discountTotal),
+    shippingCost: Math.max(0, shippingCost),
+    createdAt,
+    customerEmail: customerEmailValue,
+    benefitsApplied: normalizeBenefitList(entry?.benefitsApplied),
+    couponCode: typeof entry?.couponCode === "string" && entry.couponCode.trim() ? entry.couponCode.trim() : undefined,
+    couponLabel: couponLabelValue
+  } satisfies Order;
+}
+
 function loadOrders(): Order[] {
-  const stored = readJSON<Order[]>(ORDERS_KEY, []);
+  const stored = readJSON<any[]>(ORDERS_KEY, []);
   if (!stored.length) {
     writeJSON(ORDERS_KEY, BASE_ORDERS);
     return BASE_ORDERS;
   }
-  return stored;
+  return stored.map(normalizeOrder);
 }
 
 function loadComments(): Record<string, BlogComment[]> {
@@ -216,13 +307,28 @@ type CouponEval = {
 type NotificationKind = "info" | "success" | "error";
 type NotificationMode = "toast" | "dialog";
 
+type DialogInputConfig = {
+  label?: string;
+  type?: "text" | "number" | "email";
+  defaultValue?: string;
+  placeholder?: string;
+  maxLength?: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  autoFocus?: boolean;
+};
+
 type NotificationPayload = {
   message: string;
   kind?: NotificationKind;
   mode?: NotificationMode;
   actionLabel?: string;
-  onAction?: () => void;
+  cancelLabel?: string;
+  onAction?: (value?: string) => void;
+  onCancel?: () => void;
   durationMs?: number;
+  input?: DialogInputConfig;
 };
 
 type AppNotification = {
@@ -231,9 +337,14 @@ type AppNotification = {
   kind: NotificationKind;
   mode: NotificationMode;
   actionLabel?: string;
-  onAction?: () => void;
+  cancelLabel?: string;
+  onAction?: (value?: string) => void;
+  onCancel?: () => void;
   durationMs?: number;
+  input?: DialogInputConfig;
 };
+
+export type { AppNotification, NotificationPayload, DialogInputConfig };
 
 type ContextValue = {
   products: Product[];
@@ -274,6 +385,7 @@ type ContextValue = {
   updateCustomer: (updates: Partial<CustomerUser>) => void;
   upsertCustomer: (user: CustomerUser) => void;
   removeCustomer: (email: string) => void;
+  setCustomerStatus: (email: string, status: AccountStatus) => void;
   adminUsers: AdminUser[];
   upsertAdminUser: (user: AdminUser) => void;
   removeAdminUser: (run: string) => void;
@@ -514,8 +626,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         kind: payload.kind ?? "info",
         mode: payload.mode ?? "toast",
         actionLabel: payload.actionLabel,
+        cancelLabel: payload.cancelLabel,
         onAction: payload.onAction,
-        durationMs: payload.durationMs
+        onCancel: payload.onCancel,
+        durationMs: payload.durationMs,
+        input: payload.input
       };
       setNotifications((prev) => [...prev, entry]);
       if (entry.mode !== "dialog") {
@@ -559,6 +674,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         showNotification({
           message: "Este producto ya no está disponible.",
           kind: "error"
+        });
+        return;
+      }
+      if (customerSession?.status === "inactive") {
+        showNotification({
+          message: "Tu cuenta está desactivada. Contáctanos para reactivarla.",
+          kind: "error",
+          mode: "dialog",
+          actionLabel: "Entendido"
         });
         return;
       }
@@ -628,13 +752,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [products, showNotification, birthdayRewardAvailable]
+    [products, showNotification, birthdayRewardAvailable, customerSession?.status]
   );
 
   const setCartQty = useCallback(
     (id: string, qty: number, msg = "") => {
       const product = products.find((p) => p.id === id);
       if (!product) return;
+      if (customerSession?.status === "inactive") {
+        showNotification({
+          message: "Tu cuenta está desactivada. No puedes modificar el carrito.",
+          kind: "error",
+          mode: "dialog",
+          actionLabel: "Entendido"
+        });
+        return;
+      }
       const isBirthdayCake = product.id === BDAY_CAKE_ID;
       const desiredRaw = Math.floor(Number.isFinite(qty) ? qty : 0);
       const desired = product.stock > 0 ? Math.max(1, desiredRaw) : 0;
@@ -658,7 +791,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return next;
       });
     },
-    [products, showNotification, birthdayRewardAvailable]
+    [products, showNotification, birthdayRewardAvailable, customerSession?.status]
   );
 
   const removeFromCart = useCallback((id: string, msg = "") => {
@@ -763,7 +896,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const base = Math.max(0, subTotal - bdayDisc);
       const discountFromItems = items.reduce((sum, entry) => sum + (entry.pricing?.discountTotal ?? 0), 0);
       const userDisc = percent > 0 ? Math.min(base, discountFromItems) : 0;
-      const userLabel = percent > 0 ? `Beneficio de usuario (${Math.round(percent * 100)}% OFF)` : "";
+      let userLabel = "";
+      if (percent > 0) {
+        const age = computeAge(customerSession?.fnac ?? "");
+        const percentLabel = `${Math.round(percent * 100)}% OFF`;
+        if (typeof age === "number" && age >= 50 && Math.round(percent * 100) >= 50) {
+          userLabel = `Beneficio Adulto Mayor (${percentLabel})`;
+        } else if (customerSession?.felices50) {
+          userLabel = `Beneficio FELICES50 (${percentLabel})`;
+        } else {
+          userLabel = `Beneficio de usuario (${percentLabel})`;
+        }
+      }
 
       return {
         userDisc,
@@ -776,7 +920,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         shippingLabel
       };
     },
-    [birthdayRewardEligible, birthdayRewardAvailable, userDiscountPercent]
+    [birthdayRewardEligible, birthdayRewardAvailable, userDiscountPercent, customerSession?.fnac, customerSession?.felices50]
   );
 
   const registerCustomer = useCallback<ContextValue["registerCustomer"]>(
@@ -852,7 +996,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         felices50: payload.promoCode?.toUpperCase() === FELICES_CODE,
         createdAt: payload.createdAt ?? now,
         bdayRedeemedYear: payload.bdayRedeemedYear ?? null,
-        prefs: normalizedPrefs
+        prefs: normalizedPrefs,
+        status: "active"
       };
       setCustomers((prev) => [...prev, nuevo]);
       setCustomerSession({
@@ -862,7 +1007,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         promoCode: nuevo.promoCode,
         felices50: nuevo.felices50,
         bdayRedeemedYear: nuevo.bdayRedeemedYear,
-        prefs: nuevo.prefs
+        prefs: nuevo.prefs,
+        status: nuevo.status
       });
       return { ok: true };
     },
@@ -917,7 +1063,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         promoCode: user.promoCode,
         felices50: user.felices50,
         bdayRedeemedYear: user.bdayRedeemedYear,
-        prefs: user.prefs
+        prefs: user.prefs,
+        status: normalizeStatus(user.status)
       });
       return { ok: true };
     },
@@ -1016,7 +1163,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           promoCode: merged.promoCode,
           felices50: merged.felices50,
           bdayRedeemedYear: merged.bdayRedeemedYear,
-          prefs: merged.prefs
+          prefs: merged.prefs,
+          status: normalizeStatus(merged.status)
         });
         return next;
       });
@@ -1030,16 +1178,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const idx = prev.findIndex((u) => u.email.toLowerCase() === user.email.toLowerCase());
       if (idx >= 0) {
         const next = [...prev];
-        next[idx] = { ...next[idx], ...user };
+        next[idx] = {
+          ...next[idx],
+          ...user,
+          status: normalizeStatus(user.status ?? next[idx].status)
+        };
         return next;
       }
-      return [...prev, user];
+      return [...prev, { ...user, status: normalizeStatus(user.status) }];
     });
   }, []);
 
   const removeCustomer = useCallback((email: string) => {
     setCustomers((prev) => prev.filter((u) => u.email.toLowerCase() !== email.toLowerCase()));
   }, []);
+
+  const setCustomerStatus = useCallback(
+    (email: string, status: AccountStatus) => {
+      const normalized = normalizeStatus(status);
+      setCustomers((prev) =>
+        prev.map((user) =>
+          user.email.toLowerCase() === email.toLowerCase()
+            ? { ...user, status: normalized }
+            : user
+        )
+      );
+      setCustomerSession((prev) => {
+        if (!prev || prev.email.toLowerCase() !== email.toLowerCase()) return prev;
+        return { ...prev, status: normalized };
+      });
+    },
+    []
+  );
 
   const upsertAdminUser = useCallback(
     (user: AdminUser) => {
@@ -1177,14 +1347,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       const win = window.open("", "_blank");
       if (!win) {
-        window.alert("Permite las ventanas emergentes para ver el detalle.");
+        showNotification({
+          message: "Permite las ventanas emergentes para ver el detalle.",
+          kind: "info",
+          mode: "dialog",
+          actionLabel: "Aceptar"
+        });
         return;
       }
       win.document.open();
       win.document.write(html);
       win.document.close();
     },
-    [customerSession]
+    [customerSession, showNotification]
   );
 
   const value = useMemo<ContextValue>(
@@ -1222,6 +1397,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateCustomer,
       upsertCustomer,
       removeCustomer,
+      setCustomerStatus,
       adminUsers,
       upsertAdminUser,
       removeAdminUser,
@@ -1270,6 +1446,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateCustomer,
       upsertCustomer,
       removeCustomer,
+      setCustomerStatus,
+      setCustomerStatus,
       adminUsers,
       upsertAdminUser,
       removeAdminUser,

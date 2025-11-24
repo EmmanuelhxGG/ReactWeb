@@ -5,7 +5,7 @@ import { formatMoney } from "../../utils/format";
 import { ProductCreateForm } from "../../components/admin/ProductCreateForm";
 
 export function AdminProductosPage() {
-  const { products, removeProduct, upsertProduct } = useAppContext();
+  const { products, removeProduct, upsertProduct, showNotification } = useAppContext();
   const [filter, setFilter] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
@@ -20,20 +20,58 @@ export function AdminProductosPage() {
   });
 
   const handleStockUpdate = (product: Product) => {
-    const input = window.prompt(`Nuevo stock para ${product.nombre}`, String(product.stock));
-    if (input === null) return;
-    const value = Number(input);
-    if (!Number.isFinite(value) || value < 0) {
-      window.alert("Ingresa un número válido");
-      return;
-    }
-    upsertProduct({ ...product, stock: Math.floor(value) });
+    showNotification({
+      message: `Nuevo stock para ${product.nombre}`,
+      kind: "info",
+      mode: "dialog",
+      actionLabel: "Actualizar",
+      cancelLabel: "Cancelar",
+      input: {
+        label: "Cantidad disponible",
+        type: "number",
+        defaultValue: String(product.stock),
+        min: 0,
+        autoFocus: true
+      },
+      onAction: (value) => {
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed) || parsed < 0) {
+          showNotification({
+            message: "Ingresa un número válido",
+            kind: "error",
+            mode: "dialog",
+            actionLabel: "Aceptar"
+          });
+          return;
+        }
+        upsertProduct({ ...product, stock: Math.floor(parsed) });
+        showNotification({
+          message: "Stock actualizado.",
+          kind: "success",
+          mode: "dialog",
+          actionLabel: "Listo"
+        });
+      }
+    });
   };
 
   const handleRemove = (product: Product) => {
-    const confirm = window.confirm(`¿Deseas eliminar ${product.nombre}?`);
-    if (!confirm) return;
-    removeProduct(product.id);
+    showNotification({
+      message: `¿Deseas eliminar ${product.nombre}?`,
+      kind: "info",
+      mode: "dialog",
+      actionLabel: "Eliminar",
+      cancelLabel: "Cancelar",
+      onAction: () => {
+        removeProduct(product.id);
+        showNotification({
+          message: `${product.nombre} eliminado.`,
+          kind: "success",
+          mode: "dialog",
+          actionLabel: "Aceptar"
+        });
+      }
+    });
   };
 
   return (

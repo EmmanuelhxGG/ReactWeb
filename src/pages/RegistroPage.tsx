@@ -29,7 +29,7 @@ const MAX_AGE = 110;
 
 export function RegistroPage() {
   const navigate = useNavigate();
-  const { registerCustomer } = useAppContext();
+  const { registerCustomer, showNotification } = useAppContext();
 
   const [runValue, setRunValue] = useState("");
   const [runDisplay, setRunDisplay] = useState("");
@@ -293,9 +293,14 @@ export function RegistroPage() {
       return;
     }
 
-    window.alert("¡Registro exitoso! Sesión iniciada.");
     setErrors({});
-    navigate("/", { replace: true });
+    showNotification({
+      message: "¡Registro exitoso! Sesión iniciada.",
+      kind: "success",
+      mode: "dialog",
+      actionLabel: "Ir al inicio",
+      onAction: () => navigate("/", { replace: true })
+    });
   };
 
   return (

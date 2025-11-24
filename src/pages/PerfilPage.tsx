@@ -4,6 +4,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAppContext } from "../context/AppContext";
 import { REGIONS } from "../data/regions";
 import { computeAge } from "../utils/dates";
+import { describeBenefitLabel, formatMoney } from "../utils/format";
 import { formatRun } from "../utils/validators";
 
 const SHIPPING_OPTIONS = [
@@ -31,9 +32,14 @@ const normalizeNameInput = (value: string) =>
 
 export function PerfilPage() {
   const navigate = useNavigate();
-  const { customerSession, currentCustomer, updateCustomer, logoutCustomer, showNotification } = useAppContext();
+  const { customerSession, currentCustomer, updateCustomer, logoutCustomer, showNotification, orders } = useAppContext();
 
   const currentUser = currentCustomer;
+  const accountStatus = currentUser?.status === "inactive" ? "Desactivada" : "Activada";
+  const accountStatusLegend = currentUser?.status === "inactive"
+    ? "Tu cuenta está temporalmente desactivada por el equipo administrativo."
+    : "Tu cuenta está activa y lista para comprar.";
+  const accountStatusClass = `profile-account-status ${currentUser?.status === "inactive" ? "profile-account-status--inactive" : "profile-account-status--active"}`;
 
   const [form, setForm] = useState({
     nombre: "",
@@ -232,6 +238,28 @@ export function PerfilPage() {
     const value = currentUser?.prefs?.defaultShip ?? SHIPPING_OPTIONS[0].value;
     return SHIPPING_OPTIONS.find((option) => option.value === value)?.label || SHIPPING_OPTIONS[0].label;
   }, [currentUser]);
+
+  const customerOrders = useMemo(() => {
+    if (!customerSession) return [];
+    const email = customerSession.email.toLowerCase();
+    const name = (customerSession.nombre || "").trim().toLowerCase();
+    return orders
+      .filter((order) => {
+        const orderEmail = (order.customerEmail || "").toLowerCase();
+        const customerField = (order.cliente || "").trim().toLowerCase();
+        if (orderEmail && orderEmail === email) {
+          return true;
+        }
+        if (customerField === email) {
+          return true;
+        }
+        if (name && customerField === name) {
+          return true;
+        }
+        return false;
+      })
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  }, [customerSession, orders]);
 
   if (!customerSession) {
     return <Navigate to="/login" replace />;
@@ -537,6 +565,14 @@ export function PerfilPage() {
 
               <div className="profile-summary__note">
                 Mantén tus datos actualizados para agilizar las compras y recibir beneficios especiales.
+              </div>
+
+              <div className={accountStatusClass}>
+                <div>
+                  <span>Estado de la cuenta</span>
+                  <p className="small muted" style={{ margin: "4px 0 0" }}>{accountStatusLegend}</p>
+                </div>
+                <span className="profile-account-status__indicator">{accountStatus}</span>
               </div>
 
               <div className="profile-actions profile-actions--right">
@@ -867,6 +903,83 @@ export function PerfilPage() {
                   </button>
                 </div>
               </form>
+            </article>
+          )}
+
+          {!isEditing && (
+            <article className="profile-orders profile-view-card active">
+              <h2 className="profile-card__title">Historial de pedidos</h2>
+              <p className="muted small" style={{ marginBottom: "16px" }}>
+                Revisa tus compras anteriores y el estado que mantiene cada pedido.
+              </p>
+              {customerOrders.length ? (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "560px" }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: "left", padding: "8px 12px", borderBottom: "1px solid #f0f0f0" }}>Pedido</th>
+                        <th style={{ textAlign: "left", padding: "8px 12px", borderBottom: "1px solid #f0f0f0" }}>Fecha</th>
+                        <th style={{ textAlign: "left", padding: "8px 12px", borderBottom: "1px solid #f0f0f0" }}>Descuento</th>
+                        <th style={{ textAlign: "right", padding: "8px 12px", borderBottom: "1px solid #f0f0f0" }}>Total</th>
+                        <th style={{ textAlign: "left", padding: "8px 12px", borderBottom: "1px solid #f0f0f0" }}>Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {customerOrders.map((order) => {
+                        const dateLabel = new Date(order.createdAt).toLocaleString("es-CL", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit"
+                        });
+                        const reasonList: string[] = [];
+                        order.benefitsApplied?.forEach((label) => {
+                          const detail = describeBenefitLabel(label);
+                          reasonList.push(detail.detail ? `${detail.title} — ${detail.detail}` : detail.title);
+                        });
+                        if (order.couponCode) {
+                          reasonList.push(`Cupón ${order.couponCode}${order.couponLabel ? ` — ${order.couponLabel}` : ""}`);
+                        }
+                        if (!reasonList.length && order.discountTotal > 0) {
+                          reasonList.push("Ajuste de precio aplicado");
+                        }
+                        const hasDiscount = reasonList.length > 0;
+                        return (
+                          <tr key={order.id}>
+                            <td style={{ padding: "10px 12px", borderBottom: "1px solid #f7f7f7" }}>
+                              <strong>{order.id}</strong>
+                            </td>
+                            <td style={{ padding: "10px 12px", borderBottom: "1px solid #f7f7f7" }}>
+                              {dateLabel}
+                            </td>
+                            <td style={{ padding: "10px 12px", borderBottom: "1px solid #f7f7f7" }}>
+                              <span>{hasDiscount ? "Sí" : "No"}</span>
+                              {hasDiscount && (
+                                <ul style={{ margin: "6px 0 0", paddingLeft: "18px" }}>
+                                  {reasonList.map((reason, index) => (
+                                    <li key={`${order.id}-reason-${index}`} className="muted small">
+                                      {reason}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </td>
+                            <td style={{ padding: "10px 12px", borderBottom: "1px solid #f7f7f7", textAlign: "right" }}>
+                              {formatMoney(order.total)}
+                            </td>
+                            <td style={{ padding: "10px 12px", borderBottom: "1px solid #f7f7f7" }}>
+                              {order.estado}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="muted small">Todavía no registras pedidos en tu cuenta.</p>
+              )}
             </article>
           )}
 

@@ -5,7 +5,7 @@ import { useAppContext } from "../../context/AppContext";
 
 export function AdminLoginPage() {
   const navigate = useNavigate();
-  const { adminSession, adminLogin } = useAppContext();
+  const { adminSession, adminLogin, showNotification } = useAppContext();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
@@ -42,8 +42,13 @@ export function AdminLoginPage() {
       return;
     }
 
-    window.alert("Bienvenido al panel administrativo");
-    navigate("/admin", { replace: true });
+    showNotification({
+      message: "Bienvenido al panel administrativo",
+      kind: "success",
+      mode: "dialog",
+      actionLabel: "Entrar",
+      onAction: () => navigate("/admin", { replace: true })
+    });
   };
 
   return (

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAppContext } from "../context/AppContext";
 import { formatMoney } from "../utils/format";
+import type { Order, OrderItem } from "../types";
 
 const SHIPPING_OPTIONS = [
   { value: 3000, label: "Envío urbano ($3.000)" },
@@ -38,7 +39,8 @@ export function CarritoPage() {
     products,
     upsertProduct,
     orders,
-    updateOrders
+    updateOrders,
+    showNotification
   } = useAppContext();
 
   const { items, subTotal, effectiveSubtotal } = cartTotals;
@@ -121,6 +123,16 @@ export function CarritoPage() {
 
   const handleCheckout = () => {
     if (!items.length) return;
+    const accountStatus = currentCustomer?.status || customerSession?.status;
+    if (accountStatus === "inactive") {
+      showNotification({
+        message: "Tu cuenta está desactivada. No puedes completar compras.",
+        kind: "error",
+        mode: "dialog",
+        actionLabel: "Entendido"
+      });
+      return;
+    }
     if (!customerSession) {
       const nextErrors: typeof guestErrors = {};
       if (!guestInfo.nombre.trim()) {
@@ -155,19 +167,64 @@ export function CarritoPage() {
       upsertProduct({ ...p, stock: nextStock });
     });
 
-    // Save order record
+    const benefitList: string[] = [];
+    if (benefits.userDisc > 0 && benefits.userLabel) {
+      benefitList.push(benefits.userLabel);
+    }
+    if (benefits.bdayDisc > 0 && benefits.bdayLabel) {
+      benefitList.push(benefits.bdayLabel);
+    }
+    if (benefits.freeShipping && benefits.shippingLabel) {
+      benefitList.push(benefits.shippingLabel);
+    }
+    if (couponInfo.valid) {
+      benefitList.push(couponInfo.label || `Cupón ${couponInfo.code}`);
+    }
+
+    const perItemDiscount = items.reduce((sum, entry) => sum + Math.max(0, entry.subtotal - entry.pricing.total), 0);
+    const shippingDiscount = Math.max(0, shipBeforeCoupons - effectiveShip);
+    const couponDiscount = couponInfo.valid ? couponInfo.discount : 0;
+    const discountTotal = perItemDiscount + shippingDiscount + couponDiscount;
+    const timestamp = Date.now();
+
     try {
-      const orderId = `PED${Date.now()}`;
-      const newOrder = {
+      const orderId = `PED${timestamp}`;
+      const newOrder: Order = {
         id: orderId,
         cliente: customerSession ? customerSession.nombre || customerSession.email : guestInfo.nombre,
         total,
         estado: "Pendiente",
-        items: items.map((it) => ({ codigo: it.product.id, nombre: it.product.nombre, qty: it.qty, price: it.product.precio }))
-      };
+        createdAt: timestamp,
+        customerEmail: contactEmail || undefined,
+        items: items.map((it): OrderItem => {
+          const labels: string[] = [];
+          if (it.pricing.discountPerUnit > 0 && benefits.userLabel) {
+            labels.push(benefits.userLabel);
+          }
+          if (it.product.id === "BDAY001" && benefits.bdayApplied && benefits.bdayLabel) {
+            labels.push(benefits.bdayLabel);
+          }
+          return {
+            codigo: it.product.id,
+            nombre: it.product.nombre,
+            qty: it.qty,
+            unitPrice: it.pricing.unitPrice,
+            originalUnitPrice: it.pricing.originalUnitPrice,
+            discountPerUnit: it.pricing.discountPerUnit,
+            subtotal: it.pricing.total,
+            originalSubtotal: it.subtotal,
+            benefitLabels: labels.length ? Array.from(new Set(labels)) : undefined
+          } satisfies OrderItem;
+        }),
+        subtotal: subTotal,
+        discountTotal,
+        shippingCost: effectiveShip,
+        benefitsApplied: benefitList.length ? Array.from(new Set(benefitList)) : undefined,
+        couponCode: couponInfo.valid ? couponInfo.code : undefined,
+        couponLabel: couponInfo.valid ? couponInfo.label || undefined : undefined
+      } satisfies Order;
       updateOrders([...(orders || []), newOrder]);
     } catch (err) {
-      // non-fatal
       console.error("No se pudo guardar el pedido:", err);
     }
     if (benefits.bdayApplied && customerSession) {

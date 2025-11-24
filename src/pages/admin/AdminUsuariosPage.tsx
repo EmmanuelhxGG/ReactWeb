@@ -2,9 +2,10 @@ import { useMemo } from "react";
 import { useAppContext } from "../../context/AppContext";
 import { computeAge } from "../../utils/dates";
 import { formatRun } from "../../utils/validators";
+import type { AccountStatus } from "../../types";
 
 export function AdminUsuariosPage() {
-  const { customers, adminUsers, upsertCustomer, removeCustomer } = useAppContext();
+  const { customers, adminUsers, upsertCustomer, setCustomerStatus, showNotification } = useAppContext();
 
   const resumenClientes = useMemo(() => {
     const total = customers.length;
@@ -36,12 +37,21 @@ export function AdminUsuariosPage() {
       comuna: string;
       edadLabel: string;
       beneficio: string;
+      status: AccountStatus;
+      statusLabel: string;
     };
 
     const rows = new Map<string, ClientRow>();
 
     customers.forEach((user) => {
       const age = computeAge(user.fnac);
+      const benefits: string[] = [];
+      if (typeof age === "number" && age >= 50) {
+        benefits.push("Adulto Mayor");
+      }
+      if (user.felices50) {
+        benefits.push("FELICES50 activo");
+      }
       rows.set(user.email.toLowerCase(), {
         key: `cliente-${user.email}`,
         nombre: user.nombre,
@@ -51,7 +61,9 @@ export function AdminUsuariosPage() {
         region: user.region,
         comuna: user.comuna,
         edadLabel: age ? `${age} años` : "Edad no registrada",
-        beneficio: user.felices50 ? "FELICES50 activo" : "Sin beneficio"
+        beneficio: benefits.length ? benefits.join(" · ") : "Sin beneficio",
+        status: (user.status as AccountStatus) === "inactive" ? "inactive" : "active",
+        statusLabel: (user.status as AccountStatus) === "inactive" ? "Desactivado" : "Activo"
       });
     });
 
@@ -67,7 +79,9 @@ export function AdminUsuariosPage() {
         region: user.region || "-",
         comuna: user.comuna || "-",
         edadLabel: "Edad no registrada",
-        beneficio: "Sin beneficio"
+        beneficio: "Sin beneficio",
+        status: "active",
+        statusLabel: "Activo"
       });
     });
 
@@ -77,22 +91,120 @@ export function AdminUsuariosPage() {
   const handleEditClient = (email: string) => {
     const user = customers.find((u) => u.email.toLowerCase() === email.toLowerCase());
     if (!user) return;
-    const nombre = window.prompt("Nombre:", user.nombre) || user.nombre;
-    const apellidos = window.prompt("Apellidos:", user.apellidos) || user.apellidos;
-    const region = window.prompt("Región:", user.region || "") || user.region || "";
-    const comuna = window.prompt("Comuna:", user.comuna || "") || user.comuna || "";
-    upsertCustomer({
-      ...user,
-      nombre: nombre.trim(),
-      apellidos: apellidos.trim(),
-      region: region.trim() || user.region || "",
-      comuna: comuna.trim() || user.comuna || ""
+
+    const promptComuna = (payload: { nombre: string; apellidos: string; region: string }) => {
+      showNotification({
+        message: "Editar comuna",
+        kind: "info",
+        mode: "dialog",
+        actionLabel: "Guardar",
+        cancelLabel: "Cancelar",
+        input: {
+          label: "Comuna",
+          defaultValue: user.comuna || "",
+          maxLength: 120,
+          autoFocus: true
+        },
+        onAction: (value) => {
+          const comuna = (value ?? "").trim() || user.comuna || "";
+          upsertCustomer({
+            ...user,
+            nombre: payload.nombre,
+            apellidos: payload.apellidos,
+            region: payload.region,
+            comuna
+          });
+          showNotification({
+            message: "Cliente actualizado.",
+            kind: "success",
+            mode: "dialog",
+            actionLabel: "Aceptar"
+          });
+        }
+      });
+    };
+
+    const promptRegion = (payload: { nombre: string; apellidos: string }) => {
+      showNotification({
+        message: "Editar región",
+        kind: "info",
+        mode: "dialog",
+        actionLabel: "Siguiente",
+        cancelLabel: "Cancelar",
+        input: {
+          label: "Región",
+          defaultValue: user.region || "",
+          maxLength: 120,
+          autoFocus: true
+        },
+        onAction: (value) => {
+          const region = (value ?? "").trim() || user.region || "";
+          promptComuna({ nombre: payload.nombre, apellidos: payload.apellidos, region });
+        }
+      });
+    };
+
+    const promptApellidos = (nombre: string) => {
+      showNotification({
+        message: "Editar apellidos",
+        kind: "info",
+        mode: "dialog",
+        actionLabel: "Siguiente",
+        cancelLabel: "Cancelar",
+        input: {
+          label: "Apellidos",
+          defaultValue: user.apellidos,
+          maxLength: 120
+        },
+        onAction: (value) => {
+          const apellidos = (value ?? "").trim() || user.apellidos;
+          promptRegion({ nombre, apellidos });
+        }
+      });
+    };
+
+    showNotification({
+      message: "Editar nombre",
+      kind: "info",
+      mode: "dialog",
+      actionLabel: "Siguiente",
+      cancelLabel: "Cancelar",
+      input: {
+        label: "Nombre",
+        defaultValue: user.nombre,
+        maxLength: 120,
+        autoFocus: true
+      },
+      onAction: (value) => {
+        const nombre = (value ?? "").trim() || user.nombre;
+        promptApellidos(nombre);
+      }
     });
   };
 
-  const handleDeleteClient = (email: string) => {
-    if (!window.confirm("¿Eliminar este cliente? Esta acción no se puede deshacer.")) return;
-    removeCustomer(email);
+  const handleToggleStatus = (email: string) => {
+    const target = customers.find((user) => user.email.toLowerCase() === email.toLowerCase());
+    if (!target) return;
+    const nextStatus: AccountStatus = (target.status as AccountStatus) === "inactive" ? "active" : "inactive";
+    const deactivating = nextStatus === "inactive";
+    showNotification({
+      message: deactivating
+        ? `¿Desactivar la cuenta de ${target.nombre}?`
+        : `¿Reactivar la cuenta de ${target.nombre}?`,
+      kind: deactivating ? "error" : "success",
+      mode: "dialog",
+      actionLabel: deactivating ? "Desactivar" : "Activar",
+      cancelLabel: "Cancelar",
+      onAction: () => {
+        setCustomerStatus(email, nextStatus);
+        showNotification({
+          message: deactivating ? "Cuenta desactivada." : "Cuenta activada.",
+          kind: "success",
+          mode: "dialog",
+          actionLabel: "Aceptar"
+        });
+      }
+    });
   };
 
   return (
@@ -154,6 +266,7 @@ export function AdminUsuariosPage() {
               <th>Región</th>
               <th>Comuna</th>
               <th>Beneficios</th>
+              <th>Estado</th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -169,13 +282,18 @@ export function AdminUsuariosPage() {
                 <td>{row.region}</td>
                 <td>{row.comuna}</td>
                 <td>{row.beneficio}</td>
+                <td>{row.statusLabel}</td>
                 <td>
                   <div className="table-actions">
                     <button className="btn-edit" type="button" onClick={() => handleEditClient(row.correo)}>
                       Editar
                     </button>
-                    <button className="btn-delete" type="button" onClick={() => handleDeleteClient(row.correo)}>
-                      Eliminar
+                    <button
+                      className={row.status === "inactive" ? "btn-edit" : "btn-delete"}
+                      type="button"
+                      onClick={() => handleToggleStatus(row.correo)}
+                    >
+                      {row.status === "inactive" ? "Activar" : "Desactivar"}
                     </button>
                   </div>
                 </td>

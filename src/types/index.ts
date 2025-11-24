@@ -45,6 +45,8 @@ export type UserPreferences = {
   primaryAddressId?: string;
 };
 
+export type AccountStatus = "active" | "inactive";
+
 export type CustomerUser = {
   run: string;
   tipo: string;
@@ -62,6 +64,7 @@ export type CustomerUser = {
   createdAt: number;
   bdayRedeemedYear?: number | null;
   prefs?: UserPreferences;
+  status?: AccountStatus;
 };
 
 export type AdminUser = {
@@ -84,6 +87,7 @@ export type CustomerSession = {
   felices50?: boolean;
   bdayRedeemedYear?: number | null;
   prefs?: UserPreferences;
+  status?: AccountStatus;
 };
 
 export type AdminSession = {
@@ -146,17 +150,30 @@ export type BlogPost = {
   body: Array<{ type: "p" | "heading" | "list"; content: string | string[] }>;
 };
 
-export type OrderItem = {
-  codigo: string;
-  nombre: string;
-  qty: number;
-  price: number;
-};
-
 export type Order = {
   id: string;
   cliente: string;
   total: number;
   estado: string;
   items: OrderItem[];
+  subtotal: number;
+  discountTotal: number;
+  shippingCost: number;
+  createdAt: number;
+  customerEmail?: string;
+  benefitsApplied?: string[];
+  couponCode?: string;
+  couponLabel?: string;
+};
+
+export type OrderItem = {
+  codigo: string;
+  nombre: string;
+  qty: number;
+  unitPrice: number;
+  originalUnitPrice: number;
+  discountPerUnit: number;
+  subtotal: number;
+  originalSubtotal: number;
+  benefitLabels?: string[];
 };

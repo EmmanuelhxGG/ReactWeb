@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState } from "react";
 import { useAppContext } from "../../context/AppContext";
-import { formatMoney } from "../../utils/format";
+import { describeBenefitLabel, formatMoney } from "../../utils/format";
 
 const ESTADOS = ["Pendiente", "Preparando", "Despachado", "Entregado"];
 
@@ -91,12 +91,73 @@ export function AdminPedidosPage() {
                       <div style={{ background: "#fafafa", padding: "16px", borderRadius: "8px" }}>
                         <h4>Ítems</h4>
                         <ul style={{ paddingLeft: "20px" }}>
-                          {order.items.map((item) => (
-                            <li key={`${order.id}-${item.codigo}`}>
-                              {item.nombre} — {item.qty} × {formatMoney(item.price)}
-                            </li>
-                          ))}
+                          {order.items.map((item) => {
+                            const totalDiscount = Math.max(0, item.originalSubtotal - item.subtotal);
+                            const percent = item.originalUnitPrice > 0
+                              ? Math.round((item.discountPerUnit / item.originalUnitPrice) * 100)
+                              : 0;
+                            return (
+                              <li key={`${order.id}-${item.codigo}`} style={{ marginBottom: "16px" }}>
+                                <div>
+                                  <strong>{item.nombre}</strong> — Cant. {item.qty}
+                                </div>
+                                <div className="muted small">
+                                  Precio unitario original: {formatMoney(item.originalUnitPrice)}
+                                </div>
+                                {totalDiscount > 0 ? (
+                                  <div className="muted small">
+                                    Descuento aplicado: {percent > 0 ? `${percent}% ` : ""}(–{formatMoney(totalDiscount)})
+                                  </div>
+                                ) : (
+                                  <div className="muted small">Descuento aplicado: No registra</div>
+                                )}
+                                <div className="muted small">
+                                  Subtotal con descuento: {formatMoney(item.subtotal)}
+                                </div>
+                              </li>
+                            );
+                          })}
                         </ul>
+                        <div className="muted small" style={{ marginTop: "12px" }}>
+                          <div>Fecha del pedido: {new Date(order.createdAt).toLocaleString("es-CL", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: true
+                          })}</div>
+                          <div>Subtotal productos: {formatMoney(order.subtotal)}</div>
+                          {order.discountTotal > 0 && (
+                            <div>Descuentos total aplicados: -{formatMoney(order.discountTotal)}</div>
+                          )}
+                          <div>Envío: {formatMoney(order.shippingCost)}</div>
+                          <div>
+                            <strong>Total final: {formatMoney(order.total)}</strong>
+                          </div>
+                          {(order.benefitsApplied?.length || order.couponCode) ? (
+                            <div style={{ marginTop: "10px" }}>
+                              <div style={{ fontWeight: 600 }}>Motivos del descuento</div>
+                              <ul style={{ margin: "6px 0 0", paddingLeft: "18px" }}>
+                                {order.benefitsApplied?.map((label) => {
+                                  const detail = describeBenefitLabel(label);
+                                  return (
+                                    <li key={`${order.id}-${label}`}>
+                                      {detail.title}
+                                      {detail.detail ? ` — ${detail.detail}` : ""}
+                                    </li>
+                                  );
+                                })}
+                                {order.couponCode ? (
+                                  <li key={`${order.id}-coupon`}>
+                                    Cupón {order.couponCode}
+                                    {order.couponLabel ? ` — ${order.couponLabel}` : ""}
+                                  </li>
+                                ) : null}
+                              </ul>
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
                     </td>
                   </tr>

@@ -268,6 +268,32 @@ body{font-family:"Lato",system-ui,Segoe UI,Roboto,Arial,sans-serif;background:va
   margin:0 0 16px;
   font-weight:600;
 }
+.app-dialog__field{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  text-align:left;
+  margin-top:12px;
+}
+.app-dialog__input{
+  padding:10px 12px;
+  border-radius:10px;
+  border:1px solid #d4c7b8;
+  font-size:1rem;
+  transition:border-color .2s ease, box-shadow .2s ease;
+}
+.app-dialog__input:focus{
+  outline:none;
+  border-color:#b07d5a;
+  box-shadow:0 0 0 2px rgba(176,125,90,.18);
+}
+.app-dialog__actions{
+  display:flex;
+  justify-content:center;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-top:24px;
+}
 .app-dialog__btn{min-width:140px;}
 
 .about-grid{
@@ -585,6 +611,41 @@ body{font-family:"Lato",system-ui,Segoe UI,Roboto,Arial,sans-serif;background:va
   padding:10px 14px;
   max-width:60ch;
   margin:0 auto;
+}
+.profile-account-status{
+  margin:18px auto 0;
+  padding:12px 18px;
+  border-radius:12px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:16px;
+  max-width:480px;
+  font-weight:600;
+  border:1px solid rgba(115,92,68,.35);
+  background:#fffdf9;
+}
+.profile-account-status__indicator{
+  padding:6px 16px;
+  border-radius:999px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.6px;
+}
+.profile-account-status--active{
+  border-color:rgba(76,175,80,.35);
+}
+.profile-account-status--active .profile-account-status__indicator{
+  background:rgba(76,175,80,.12);
+  color:#2e7d32;
+}
+.profile-account-status--inactive{
+  border-color:rgba(211,47,47,.45);
+  background:#fff4f4;
+}
+.profile-account-status--inactive .profile-account-status__indicator{
+  background:rgba(211,47,47,.12);
+  color:#c62828;
 }
 .profile-empty{
   padding:30px;

@@ -8,7 +8,7 @@ type LoginMode = "customer" | "admin";
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const { loginCustomer, customerSession, adminLogin } = useAppContext();
+  const { loginCustomer, customerSession, adminLogin, showNotification } = useAppContext();
   const [mode, setMode] = useState<LoginMode>("customer");
 
   const [email, setEmail] = useState("");
@@ -53,8 +53,13 @@ export function LoginPage() {
       return;
     }
 
-    window.alert("Sesión iniciada.");
-    navigate("/", { replace: true });
+    showNotification({
+      message: "Sesión iniciada.",
+      kind: "success",
+      mode: "dialog",
+      actionLabel: "Ir al inicio",
+      onAction: () => navigate("/", { replace: true })
+    });
   };
 
   const handleAdminSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -83,8 +88,13 @@ export function LoginPage() {
       return;
     }
 
-    window.alert("Bienvenido al panel administrativo");
-    navigate("/admin", { replace: true });
+    showNotification({
+      message: "Bienvenido al panel administrativo",
+      kind: "success",
+      mode: "dialog",
+      actionLabel: "Entrar",
+      onAction: () => navigate("/admin", { replace: true })
+    });
   };
 
   const switchMode = (nextMode: LoginMode) => {
