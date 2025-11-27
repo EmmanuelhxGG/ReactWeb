@@ -222,7 +222,7 @@ export function ProductoPage() {
 
       <section className="product-comments">
         <CommentsSection
-          postId={`product:${product.id}`}
+          postSlug={`product:${product.id}`}
           title="Opiniones del producto"
           emptyMessage="Sé el primero en contar tu experiencia con este producto."
           placeholder="Cuéntanos cómo te fue con este producto..."

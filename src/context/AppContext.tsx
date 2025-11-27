@@ -362,10 +362,10 @@ type ContextValue = {
   refreshOrders: () => Promise<void>;
   changeOrderStatus: (orderId: string, nextStatusLabel: string) => Promise<{ ok: boolean; message?: string }>;
   comments: Record<string, BlogComment[]>;
-  addComment: (postId: string, text: string) => Promise<{ ok: boolean; message?: string }>;
-  hydrateComments: (postId: string, list: BlogComment[]) => void;
-  editComment: (postId: string, id: string, text: string) => Promise<{ ok: boolean; message?: string }>;
-  deleteComment: (postId: string, id: string) => Promise<{ ok: boolean; message?: string }>;
+  addComment: (postSlug: string, text: string) => Promise<{ ok: boolean; message?: string }>;
+  hydrateComments: (postSlug: string, list: BlogComment[]) => void;
+  editComment: (postSlug: string, id: string, text: string) => Promise<{ ok: boolean; message?: string }>;
+  deleteComment: (postSlug: string, id: string) => Promise<{ ok: boolean; message?: string }>;
   openReceiptWindow: (order: Order) => void;
   placeOrder: (request: CreateOrderRequestDto) => Promise<{ ok: boolean; order?: Order; message?: string }>;
 };
@@ -1377,7 +1377,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const addComment = useCallback<ContextValue["addComment"]>(
-    async (postId, text) => {
+    async (postSlug, text) => {
       if (!auth.token || auth.role === null) {
         return { ok: false, message: "Debes iniciar sesión para comentar." };
       }
@@ -1389,10 +1389,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: "Máximo 500 caracteres." };
       }
       try {
-        const comment = await apiCreateBlogComment(postId, content, auth.token);
+        const comment = await apiCreateBlogComment(postSlug, content, auth.token);
         setComments((prev) => ({
           ...prev,
-          [postId]: [...(prev[postId] || []), comment]
+          [postSlug]: [...(prev[postSlug] || []), comment]
         }));
         return { ok: true };
       } catch (error) {
@@ -1402,12 +1402,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [auth.token, auth.role]
   );
 
-  const hydrateComments = useCallback((postId: string, list: BlogComment[]) => {
-    setComments((prev) => ({ ...prev, [postId]: list }));
+  const hydrateComments = useCallback((postSlug: string, list: BlogComment[]) => {
+    setComments((prev) => ({ ...prev, [postSlug]: list }));
   }, []);
 
   const editComment = useCallback<ContextValue["editComment"]>(
-    async (postId, id, text) => {
+    async (postSlug, id, text) => {
       if (!auth.token) {
         return { ok: false, message: "Debes iniciar sesión." };
       }
@@ -1418,9 +1418,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         const updated = await apiUpdateBlogComment(id, content, auth.token);
         setComments((prev) => {
-          const list = prev[postId] || [];
+          const list = prev[postSlug] || [];
           const next = list.map((comment) => (comment.id === updated.id ? updated : comment));
-          return { ...prev, [postId]: next };
+          return { ...prev, [postSlug]: next };
         });
         return { ok: true };
       } catch (error) {
@@ -1431,15 +1431,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const deleteComment = useCallback<ContextValue["deleteComment"]>(
-    async (postId, id) => {
+    async (postSlug, id) => {
       if (!auth.token) {
         return { ok: false, message: "Debes iniciar sesión." };
       }
       try {
         await apiDeleteBlogComment(id, auth.token);
         setComments((prev) => {
-          const list = prev[postId] || [];
-          return { ...prev, [postId]: list.filter((comment) => comment.id !== id) };
+          const list = prev[postSlug] || [];
+          return { ...prev, [postSlug]: list.filter((comment) => comment.id !== id) };
         });
         return { ok: true };
       } catch (error) {

@@ -52,7 +52,7 @@ export function BlogDetallePage() {
       .then(({ post: entry, comments }) => {
         if (!isMounted) return;
         setPost(entry);
-        hydrateComments(entry.id, comments);
+        hydrateComments(entry.slug, comments);
         setError(null);
       })
       .catch(() => {
@@ -112,7 +112,7 @@ export function BlogDetallePage() {
         {post.body.map((block, index) => renderBlock(block, index))}
       </div>
 
-      <CommentsSection postId={post.id} />
+      <CommentsSection postSlug={post.slug} />
     </article>
   );
 }

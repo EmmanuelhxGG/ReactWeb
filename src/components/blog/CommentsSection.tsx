@@ -4,13 +4,13 @@ import { useAppContext } from "../../context/AppContext";
 import { timeAgo } from "../../utils/timeAgo";
 
 interface Props {
-  postId: string;
+  postSlug: string;
   title?: string;
   emptyMessage?: string;
   placeholder?: string;
 }
 
-export function CommentsSection({ postId, title, emptyMessage, placeholder }: Props) {
+export function CommentsSection({ postSlug, title, emptyMessage, placeholder }: Props) {
   const {
     comments,
     customerSession,
@@ -18,7 +18,7 @@ export function CommentsSection({ postId, title, emptyMessage, placeholder }: Pr
     editComment,
     deleteComment
   } = useAppContext();
-  const list = comments[postId] || [];
+  const list = comments[postSlug] || [];
   const sectionTitle = title || "Comentarios";
   const emptyLabel = emptyMessage || "Aún no hay comentarios. ¡Sé el primero!";
   const inputPlaceholder = placeholder || "¿Qué te pareció este artículo?";
@@ -35,7 +35,7 @@ export function CommentsSection({ postId, title, emptyMessage, placeholder }: Pr
       setError("Escribe algo.");
       return;
     }
-    const result = await addComment(postId, text);
+    const result = await addComment(postSlug, text);
     if (!result.ok) {
       setError(result.message || "No pudimos publicar tu comentario.");
       return;
@@ -52,7 +52,7 @@ export function CommentsSection({ postId, title, emptyMessage, placeholder }: Pr
   const saveEdit = (id: string) => {
     const text = editDraft.trim();
     if (!text) return;
-    editComment(postId, id, text);
+    editComment(postSlug, id, text);
     setEditingId(null);
     setEditDraft("");
   };
@@ -120,7 +120,7 @@ export function CommentsSection({ postId, title, emptyMessage, placeholder }: Pr
                       <button
                         className="btn btn--ghost btn-sm"
                         type="button"
-                        onClick={() => deleteComment(postId, comment.id)}
+                        onClick={() => deleteComment(postSlug, comment.id)}
                       >
                         Eliminar
                       </button>
