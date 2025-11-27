@@ -109,6 +109,7 @@ export function BlogDetallePage() {
     );
   }
 
+  
   return (
     <article className="blog-detail container" style={{ padding: "32px 0 48px" }}>
       <Link className="link" to="/blog">
