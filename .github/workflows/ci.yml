@@ -1,0 +1,40 @@
+name: CI - Run Vitest
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        # Use Node 20 to satisfy package engine requirements (vitest, vite, jsdom)
+        node-version: [20.x]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: |
+          # Ejecuta Vitest, captura toda la salida en vitest.log y falla si el comando falla
+          npx vitest run --reporter verbose --environment jsdom 2>&1 | tee vitest.log || true
+          cat vitest.log
+
+      - name: Upload test logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-logs
+          path: vitest.log

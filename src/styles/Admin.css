@@ -1,0 +1,267 @@
+/* ===============================
+  THEME
+=============================== */
+:root{
+  --color-principal:#5D4037;   /* café oscuro */
+  --color-secundario:#D7CCC8;  /* beige sidebar */
+  --color-acento:#A1887F;      /* hover links sidebar */
+  --color-blanco:#fff;
+  --color-fondo:#F5F5F5;
+  --color-texto:#5D4037;
+}
+
+/* ===============================
+  Base / reset
+=============================== */
+*{box-sizing:border-box;margin:0;padding:0}
+html{font-family:'Lato',sans-serif;color:var(--color-texto);line-height:1.6}
+body{background:var(--color-fondo)}
+a{color:var(--color-principal);text-decoration:none}
+a:hover{text-decoration:underline}
+img,video{max-width:100%;height:auto;display:block}
+
+/* ===============================
+  Login
+=============================== */
+.login-body{
+  background-color:var(--color-fondo);
+  display:flex;flex-direction:column;min-height:100vh;
+  justify-content:center;align-items:center;
+}
+.login-container{display:flex;justify-content:center;align-items:center;flex-grow:1}
+.login-card{
+  background:var(--color-blanco);padding:32px;border-radius:10px;
+  box-shadow:0 4px 8px rgba(0,0,0,.15);width:100%;max-width:400px;
+}
+.login-title{font-family:'Pacifico',cursive;text-align:center;margin-bottom:24px;color:var(--color-principal)}
+.login-form .form-group{margin-bottom:16px}
+.login-form label{font-weight:700;display:block;margin-bottom:6px}
+.login-form input{width:100%;padding:10px;border:1px solid #ccc;border-radius:6px}
+.help{font-size:12px;color:#d32f2f;display:block;margin-top:4px}
+.footer-login{text-align:center;padding:16px;font-size:14px;color:var(--color-texto)}
+
+/* ===============================
+   Admin layout
+=============================== */
+.admin-layout{display:flex;min-height:100vh}
+
+/* Sidebar */
+.sidebar{
+  width:250px;
+  background:var(--color-secundario);
+  color:var(--color-blanco);
+  padding:2rem 1rem;
+  display:flex;flex-direction:column;
+}
+.sidebar__title{
+  font-family:'Pacifico',cursive;text-align:center;
+  margin-bottom:2rem;font-size:28px;color:var(--color-principal);
+}
+.sidebar__nav{display:flex;flex-direction:column;gap:10px}
+.sidebar__link{
+  color:var(--color-principal);
+  padding:10px 15px;border-radius:8px;font-weight:700;
+  display:flex;align-items:center;gap:10px;
+  transition:background-color .2s ease,color .2s ease;
+}
+.sidebar__link:hover,
+.sidebar__link.active{
+  background:var(--color-acento);
+  color:var(--color-blanco);
+  text-decoration:none;
+}
+.sidebar__link.logout{
+  margin-top:auto;border-top:1px solid var(--color-principal);padding-top:15px;
+}
+
+/* Main */
+.main-content{
+  flex-grow:1;
+  padding:2rem;
+  background:var(--color-blanco);
+}
+
+/* Header (alineado como Vendedor) */
+.admin-header{margin-bottom:24px}
+.admin-title{
+  font-size:32px;font-family:'Pacifico',cursive;
+  margin-bottom:8px;color:var(--color-principal);
+}
+.admin-subtitle{color:#757575}
+
+/* Widgets (cards) */
+.admin-widgets{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:24px;
+}
+.widget{
+  background:var(--color-blanco);
+  padding:24px;border-radius:8px;
+  box-shadow:0 4px 8px rgba(0,0,0,.1);
+}
+.widget h3{margin-bottom:12px;color:var(--color-principal)}
+.widget p{color:#555;margin-bottom:20px}
+
+/* Botones */
+.btn{
+  display:inline-block;padding:10px 16px;border-radius:8px;
+  font-weight:700;text-align:center;transition:background-color .2s ease;
+}
+.btn--principal{
+  background:var(--color-principal);color:#fff;border:1px solid var(--color-principal);
+}
+.btn--principal:hover{background:#4E342E}
+
+/* ===============================
+  Tablas / Formularios
+=============================== */
+.actions-top{
+  margin-bottom:20px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+}
+.admin-table{
+  width:100%;border-collapse:collapse;background:#fff;
+  box-shadow:0 4px 8px rgba(0,0,0,.1);border-radius:8px;overflow:hidden;
+}
+.admin-table th,.admin-table td{padding:12px 16px;text-align:left;border-bottom:1px solid #eee;white-space:nowrap}
+.admin-table th{background:var(--color-principal);color:#fff;font-weight:700}
+.admin-table tr:hover{background:#f9f9f9}
+.table-actions{display:flex;gap:8px}
+.table-actions button{border:0;cursor:pointer;padding:6px 10px;border-radius:5px;font-size:14px}
+.btn-edit{background:#4caf50;color:#fff}
+.btn-delete{background:#e53935;color:#fff}
+
+/* wrapper opcional si lo agregas en HTML, pero igual aseguramos scroll abajo */
+.admin-table-wrap{overflow-x:auto}
+.admin-form{
+  background:#fff;padding:24px;border-radius:8px;box-shadow:0 4px 8px rgba(0,0,0,.1);
+}
+.admin-form .form-group{margin-bottom:16px;display:flex;flex-direction:column}
+.admin-form label{font-weight:700;margin-bottom:6px}
+.admin-form input,.admin-form textarea,.admin-form select{
+  padding:10px;border:1px solid #ccc;border-radius:6px;font-size:14px;
+}
+.admin-form textarea{resize:vertical;min-height:80px}
+.form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}
+.form-actions{margin-top:20px;display:flex;gap:12px}
+.form-actions .btn{flex:1}
+
+/* ===============================
+   Responsive
+=============================== */
+@media (max-width:1024px){
+  .main-content{padding:1.25rem}
+}
+@media (max-width:900px){
+  .admin-widgets{grid-template-columns:1fr}
+}
+@media (max-width:768px){
+  .admin-layout{flex-direction:column}
+  .sidebar{
+    width:100%;height:auto;flex-direction:row;justify-content:space-around;
+    padding:1rem;align-items:center;gap:15px;
+  }
+  .sidebar__title{display:none}
+  .sidebar__nav{flex-direction:row;flex-wrap:wrap;justify-content:center}
+  .sidebar__link.logout{display:none}
+  /* tablas: scroll horizontal en pantallas pequeñas */
+  .admin-table{display:block;overflow-x:auto}
+}
+@media (max-width:560px){
+  .form-actions .btn{width:100%}
+}
+
+/* ===== MOBILE POLISH – Admin ===== */
+/* Evita desbordes horizontales */
+html, body { overflow-x: hidden; }
+
+/* Sidebar horizontal*/
+@media (max-width: 768px){
+  .sidebar{
+    gap: 10px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .sidebar__nav{
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+  .sidebar__link{ white-space: nowrap; }
+}
+
+@media (max-width: 768px){
+  .admin-table{ display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+
+/* Formularios: botones apilados en pantallas muy chicas */
+@media (max-width: 560px){
+  .form-actions{ flex-direction: column; gap: 10px; }
+  .form-actions .btn{ width: 100%; }
+}
+
+/* ===== Barra superior Admin ===== */
+.admin-header nav,
+.admin-tabs,
+.tabs-admin,
+.nav-tabs {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: nowrap;
+  width: 100%;
+}
+
+/* Botones/píldoras */
+.admin-header nav a,
+.admin-tabs a,
+.tabs-admin a,
+.nav-tabs a {
+  padding: 10px 14px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+/* --- Móvil / tablets: que se acomoden en varias columnas --- */
+@media (max-width: 768px){
+  .admin-header nav,
+  .admin-tabs,
+  .tabs-admin,
+  .nav-tabs{
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    flex-wrap: initial;
+  }
+
+  .admin-header nav a,
+  .admin-tabs a,
+  .tabs-admin a,
+  .nav-tabs a{
+    white-space: normal;
+    text-align: center;
+    padding: 10px 12px;
+  }
+}
+
+/* Teléfonos angostos: 2 por fila */
+@media (max-width: 480px){
+  .admin-header nav,
+  .admin-tabs,
+  .tabs-admin,
+  .nav-tabs{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-header nav a,
+  .admin-tabs a,
+  .tabs-admin a,
+  .nav-tabs a{
+    font-size: 15px;
+    padding: 8px 10px;
+  }
+}
