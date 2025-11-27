@@ -1,4 +1,4 @@
-/* ===============================
+/* =============================================
   THEME
 =============================== */
 :root{
@@ -14,10 +14,14 @@
   Base / reset
 =============================== */
 *{box-sizing:border-box;margin:0;padding:0}
+
 html{font-family:'Lato',sans-serif;color:var(--color-texto);line-height:1.6}
 body{background:var(--color-fondo)}
+
 a{color:var(--color-principal);text-decoration:none}
+
 a:hover{text-decoration:underline}
+
 img,video{max-width:100%;height:auto;display:block}
 
 /* ===============================
