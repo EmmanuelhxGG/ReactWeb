@@ -8,6 +8,8 @@ type LoginRequest = {
 type LoginResponse = {
   token: string;
   expiresAt: number;
+  refreshToken: string;
+  refreshExpiresAt: number;
   role: string;
   userId: string;
 };
@@ -18,3 +20,12 @@ export async function login(payload: LoginRequest): Promise<LoginResponse> {
     body: payload
   });
 }
+
+export async function refreshAuth(token: string): Promise<LoginResponse> {
+  return request<LoginResponse>("/auth/refresh", {
+    method: "POST",
+    body: { refreshToken: token }
+  });
+}
+
+export type { LoginResponse };

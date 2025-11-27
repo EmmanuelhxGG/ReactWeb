@@ -12,6 +12,8 @@ import { NosotrosPage } from "./pages/NosotrosPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegistroPage } from "./pages/RegistroPage";
 import { PerfilPage } from "./pages/PerfilPage";
+import { RequireCustomer } from "./routes/RequireCustomer";
+import { RequireAdmin } from "./routes/RequireAdmin";
 import { AdminLoginPage } from "./pages/admin/AdminLoginPage";
 import { AdminLayout } from "./pages/admin/AdminLayout";
 import { AdminHomePage } from "./pages/admin/AdminHomePage";
@@ -41,9 +43,23 @@ function App() {
             <Route path="blog/:slug" element={<BlogDetallePage />} />
             <Route path="login" element={<LoginPage />} />
             <Route path="registro" element={<RegistroPage />} />
-            <Route path="perfil" element={<PerfilPage />} />
+            <Route
+              path="perfil"
+              element={(
+                <RequireCustomer>
+                  <PerfilPage />
+                </RequireCustomer>
+              )}
+            />
             <Route path="admin/login" element={<AdminLoginPage />} />
-            <Route path="admin" element={<AdminLayout />}>
+            <Route
+              path="admin"
+              element={(
+                <RequireAdmin>
+                  <AdminLayout />
+                </RequireAdmin>
+              )}
+            >
               <Route index element={<AdminHomePage />} />
               <Route path="productos" element={<AdminProductosPage />} />
               <Route path="producto-nuevo" element={<Navigate to="/admin/productos" replace />} />
@@ -51,7 +67,14 @@ function App() {
               <Route path="usuario-nuevo" element={<AdminUsuariosNuevoPage />} />
               <Route path="pedidos" element={<AdminPedidosPage />} />
             </Route>
-            <Route path="vendedor" element={<VendedorLayout />}>
+            <Route
+              path="vendedor"
+              element={(
+                <RequireAdmin allowRoles={["Inventario", "Ventas", "Vendedor"]}>
+                  <VendedorLayout />
+                </RequireAdmin>
+              )}
+            >
               <Route index element={<VendedorHomePage />} />
               <Route path="inventario" element={<VendedorInventarioPage />} />
               <Route path="pedidos" element={<VendedorPedidosPage />} />

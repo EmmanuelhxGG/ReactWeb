@@ -26,7 +26,7 @@ import {
   deleteProduct as apiDeleteProduct
 } from "../services/products";
 import { fetchCoupons } from "../services/coupons";
-import { login } from "../services/auth";
+import { login, refreshAuth } from "../services/auth";
 import {
   registerCustomer as apiRegisterCustomer,
   fetchCurrentCustomer,
@@ -126,12 +126,21 @@ type AuthRole = "CUSTOMER" | "ADMIN";
 
 type AuthState = {
   token: string | null;
+  refreshToken: string | null;
   role: AuthRole | null;
   userId: string | null;
   expiresAt: number | null;
+  refreshExpiresAt: number | null;
 };
 
-const EMPTY_AUTH: AuthState = { token: null, role: null, userId: null, expiresAt: null };
+const EMPTY_AUTH: AuthState = {
+  token: null,
+  refreshToken: null,
+  role: null,
+  userId: null,
+  expiresAt: null,
+  refreshExpiresAt: null
+};
 
 const ORDER_STATUS_LABEL: Record<OrderStatusDto, string> = {
   PENDIENTE: "Pendiente",
@@ -370,13 +379,15 @@ function loadAuthFromSession(): AuthState {
   const raw = window.sessionStorage.getItem(AUTH_STORAGE_KEY);
   if (!raw) return EMPTY_AUTH;
   try {
-    const parsed = JSON.parse(raw) as AuthState;
+    const parsed = JSON.parse(raw) as Partial<AuthState>;
     if (parsed && typeof parsed === "object" && typeof parsed.token === "string" && parsed.token) {
       return {
         token: parsed.token,
-        role: parsed.role ?? null,
+        refreshToken: typeof parsed.refreshToken === "string" && parsed.refreshToken ? parsed.refreshToken : null,
+        role: (parsed.role as AuthRole) ?? null,
         userId: parsed.userId ?? null,
-        expiresAt: parsed.expiresAt ?? null
+        expiresAt: typeof parsed.expiresAt === "number" ? parsed.expiresAt : null,
+        refreshExpiresAt: typeof parsed.refreshExpiresAt === "number" ? parsed.refreshExpiresAt : null
       };
     }
   } catch (error) {
@@ -393,7 +404,14 @@ const saveAuthToSession = (state: AuthState) => {
   }
   window.sessionStorage.setItem(
     AUTH_STORAGE_KEY,
-    JSON.stringify({ token: state.token, role: state.role, userId: state.userId, expiresAt: state.expiresAt })
+    JSON.stringify({
+      token: state.token,
+      refreshToken: state.refreshToken,
+      role: state.role,
+      userId: state.userId,
+      expiresAt: state.expiresAt,
+      refreshExpiresAt: state.refreshExpiresAt
+    })
   );
 };
 
@@ -406,6 +424,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [coupon, setCouponState] = useState<string>("");
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const notificationTimers = useRef<Record<string, number>>({});
+  const refreshTimerRef = useRef<number | null>(null);
   const [customerProfile, setCustomerProfile] = useState<CustomerUser | null>(null);
   const [customers, setCustomers] = useState<CustomerUser[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
@@ -655,12 +674,133 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [dismissNotification]
   );
 
+  const mapPreferencesFromProfile = useCallback((profile: CustomerUser | null) => {
+    if (!profile?.prefs) return;
+    if (profile.prefs.defaultShip) {
+      setShippingCostState(normalizeShipCost(profile.prefs.defaultShip));
+    }
+  }, []);
+
+  const hydrateForAuth = useCallback(async (state: AuthState) => {
+    if (!state.token || !state.role) {
+      setCustomerProfile(null);
+      setCustomers([]);
+      setAdminUsers([]);
+      setAdminSession(null);
+      setOrders([]);
+      return;
+    }
+
+    if (state.role === "CUSTOMER") {
+      try {
+        const [profileDto, ordersDto] = await Promise.all([
+          fetchCurrentCustomer(state.token),
+          fetchMyOrders(state.token)
+        ]);
+        const profile = mapCustomerProfile(profileDto);
+        setCustomerProfile(profile);
+        setCustomers([]);
+        setAdminUsers([]);
+        setAdminSession(null);
+        setOrders(ordersDto.map(mapOrder));
+        mapPreferencesFromProfile(profile);
+      } catch (error) {
+        console.error("No se pudo obtener el perfil del cliente", error);
+        showNotification({ message: extractErrorMessage(error, "No se pudo cargar tu perfil"), kind: "error" });
+        setAuth(EMPTY_AUTH);
+        saveAuthToSession(EMPTY_AUTH);
+      }
+    } else {
+      try {
+        const [staffDto, customersDto, ordersDto] = await Promise.all([
+          fetchStaff(state.token),
+          fetchAdminCustomers(state.token),
+          fetchAllOrders(state.token)
+        ]);
+        const staff = staffDto.map(mapStaff);
+        setAdminUsers(staff);
+        const staffDtoMatch = staffDto.find((s) => s.id === state.userId);
+        // Normalize email beforehand to avoid calling toLowerCase on undefined when no match exists.
+        const dtoEmail = staffDtoMatch?.email?.toLowerCase() ?? "";
+        const currentStaff = staff.find((entry) => entry.id === state.userId || (entry.correo?.toLowerCase() ?? "") === dtoEmail);
+        setAdminSession(
+          currentStaff
+            ? { correo: currentStaff.correo, nombre: `${currentStaff.nombre} ${currentStaff.apellidos}`.trim(), rol: currentStaff.rol }
+            : { correo: "admin", nombre: "Administrador", rol: "Administrador" }
+        );
+        setCustomerProfile(null);
+        setCustomers(customersDto.map(mapCustomerSummary));
+        setOrders(ordersDto.map(mapOrder));
+      } catch (error) {
+        console.error("No se pudieron cargar los datos administrativos", error);
+        showNotification({ message: extractErrorMessage(error, "No se pudo cargar el panel"), kind: "error" });
+        setAuth(EMPTY_AUTH);
+        saveAuthToSession(EMPTY_AUTH);
+      }
+    }
+  }, [mapPreferencesFromProfile, showNotification]);
+
+  const applyAuthState = useCallback(
+    async (state: AuthState, options?: { hydrate?: boolean }) => {
+      setAuth(state);
+      saveAuthToSession(state);
+      if (options?.hydrate ?? true) {
+        await hydrateForAuth(state);
+      }
+    },
+    [hydrateForAuth]
+  );
+
   useEffect(() => () => {
     const timers = notificationTimers.current;
     for (const id of Object.keys(timers)) {
       window.clearTimeout(timers[id]);
     }
+    if (refreshTimerRef.current) {
+      window.clearTimeout(refreshTimerRef.current);
+    }
   }, []);
+
+  const clearRefreshTimer = useCallback(() => {
+    if (refreshTimerRef.current) {
+      window.clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
+  }, []);
+
+  const performRefresh = useCallback(async () => {
+    clearRefreshTimer();
+    if (!auth.refreshToken) {
+      return;
+    }
+    if (!auth.refreshExpiresAt || auth.refreshExpiresAt <= Date.now()) {
+      await applyAuthState(EMPTY_AUTH);
+      showNotification({ message: "Tu sesión expiró. Inicia sesión nuevamente.", kind: "info" });
+      return;
+    }
+    try {
+      const response = await refreshAuth(auth.refreshToken);
+      const role = response.role === "ADMIN" || response.role === "CUSTOMER" ? (response.role as AuthRole) : null;
+      if (!role) {
+        throw new Error("Rol de autenticación no soportado");
+      }
+      await applyAuthState(
+        {
+          token: response.token,
+          refreshToken: response.refreshToken,
+          role,
+          userId: response.userId,
+          expiresAt: response.expiresAt,
+          refreshExpiresAt: response.refreshExpiresAt
+        },
+        { hydrate: false }
+      );
+    } catch (error) {
+      console.error("No se pudo refrescar la sesión", error);
+      await applyAuthState(EMPTY_AUTH);
+      showNotification({ message: "Tu sesión expiró. Inicia sesión nuevamente.", kind: "info" });
+    }
+  }, [auth.refreshToken, auth.refreshExpiresAt, applyAuthState, showNotification, clearRefreshTimer]);
 
   const refreshProducts = useCallback(async () => {
     try {
@@ -671,6 +811,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showNotification({ message: "No se pudo cargar el catálogo", kind: "error" });
     }
   }, [showNotification]);
+
+  useEffect(() => {
+    clearRefreshTimer();
+    if (!auth.token || !auth.refreshToken || !auth.expiresAt) {
+      return;
+    }
+    if (auth.refreshExpiresAt && auth.refreshExpiresAt <= Date.now()) {
+      void performRefresh();
+      return;
+    }
+    const now = Date.now();
+    const bufferMs = 60_000;
+    const delay = Math.max(5_000, auth.expiresAt - now - bufferMs);
+    if (delay <= 0) {
+      void performRefresh();
+      return;
+    }
+    refreshTimerRef.current = window.setTimeout(() => {
+      void performRefresh();
+    }, delay);
+    return () => {
+      clearRefreshTimer();
+    };
+  }, [auth.token, auth.refreshToken, auth.expiresAt, auth.refreshExpiresAt, clearRefreshTimer, performRefresh]);
 
   useEffect(() => {
     void refreshProducts();
@@ -806,69 +970,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const clearCart = useCallback(() => setCart([]), []);
 
-  const mapPreferencesFromProfile = useCallback((profile: CustomerUser | null) => {
-    if (!profile?.prefs) return;
-    if (profile.prefs.defaultShip) {
-      setShippingCostState(normalizeShipCost(profile.prefs.defaultShip));
-    }
-  }, []);
-
-  const hydrateForAuth = useCallback(async (state: AuthState) => {
-    if (!state.token || !state.role) {
-      setCustomerProfile(null);
-      setCustomers([]);
-      setAdminUsers([]);
-      setAdminSession(null);
-      setOrders([]);
-      return;
-    }
-
-    if (state.role === "CUSTOMER") {
-      try {
-        const [profileDto, ordersDto] = await Promise.all([
-          fetchCurrentCustomer(state.token),
-          fetchMyOrders(state.token)
-        ]);
-        const profile = mapCustomerProfile(profileDto);
-        setCustomerProfile(profile);
-        setCustomers([]);
-        setAdminUsers([]);
-        setAdminSession(null);
-        setOrders(ordersDto.map(mapOrder));
-        mapPreferencesFromProfile(profile);
-      } catch (error) {
-        console.error("No se pudo obtener el perfil del cliente", error);
-        showNotification({ message: extractErrorMessage(error, "No se pudo cargar tu perfil"), kind: "error" });
-        setAuth(EMPTY_AUTH);
-        saveAuthToSession(EMPTY_AUTH);
-      }
-    } else {
-      try {
-        const [staffDto, customersDto, ordersDto] = await Promise.all([
-          fetchStaff(state.token),
-          fetchAdminCustomers(state.token),
-          fetchAllOrders(state.token)
-        ]);
-        const staff = staffDto.map(mapStaff);
-        setAdminUsers(staff);
-        const currentStaff = staff.find((entry) => entry.id === state.userId || entry.correo.toLowerCase() === (staffDto.find((s) => s.id === state.userId)?.email.toLowerCase() ?? ""));
-        setAdminSession(
-          currentStaff
-            ? { correo: currentStaff.correo, nombre: `${currentStaff.nombre} ${currentStaff.apellidos}`.trim(), rol: currentStaff.rol }
-            : { correo: "admin", nombre: "Administrador", rol: "Administrador" }
-        );
-        setCustomerProfile(null);
-        setCustomers(customersDto.map(mapCustomerSummary));
-        setOrders(ordersDto.map(mapOrder));
-      } catch (error) {
-        console.error("No se pudieron cargar los datos administrativos", error);
-        showNotification({ message: extractErrorMessage(error, "No se pudo cargar el panel"), kind: "error" });
-        setAuth(EMPTY_AUTH);
-        saveAuthToSession(EMPTY_AUTH);
-      }
-    }
-  }, [mapPreferencesFromProfile, showNotification]);
-
   useEffect(() => {
     if (initialHydrated) return;
     setInitialHydrated(true);
@@ -876,15 +977,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       void hydrateForAuth(auth);
     }
   }, [auth, hydrateForAuth, initialHydrated]);
-
-  const applyAuthState = useCallback(
-    async (state: AuthState) => {
-      setAuth(state);
-      saveAuthToSession(state);
-      await hydrateForAuth(state);
-    },
-    [hydrateForAuth]
-  );
 
   const registerCustomer = useCallback<ContextValue["registerCustomer"]>(
     async (payload) => {
@@ -940,9 +1032,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         await applyAuthState({
           token: loginResult.token,
+          refreshToken: loginResult.refreshToken,
           role: loginResult.role as AuthRole,
           userId: loginResult.userId,
-          expiresAt: loginResult.expiresAt
+          expiresAt: loginResult.expiresAt,
+          refreshExpiresAt: loginResult.refreshExpiresAt
         });
 
         return { ok: true };
@@ -962,9 +1056,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         await applyAuthState({
           token: response.token,
+          refreshToken: response.refreshToken,
           role: "CUSTOMER",
           userId: response.userId,
-          expiresAt: response.expiresAt
+          expiresAt: response.expiresAt,
+          refreshExpiresAt: response.refreshExpiresAt
         });
         return { ok: true };
       } catch (error) {
@@ -983,9 +1079,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         await applyAuthState({
           token: response.token,
+          refreshToken: response.refreshToken,
           role: "ADMIN",
           userId: response.userId,
-          expiresAt: response.expiresAt
+          expiresAt: response.expiresAt,
+          refreshExpiresAt: response.refreshExpiresAt
         });
         return { ok: true };
       } catch (error) {
