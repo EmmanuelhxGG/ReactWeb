@@ -1,8 +1,15 @@
+<<<<<<< HEAD
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useAppContext } from "../../context/AppContext";
 import type { Product } from "../../types";
 import { BASE_CATEGORIES } from "../../data/products";
+=======
+import { useMemo, useState } from "react";
+import type { FormEvent } from "react";
+import { useAppContext } from "../../context/AppContext";
+import type { Product } from "../../types";
+>>>>>>> master
 
 const INITIAL_FORM = {
   id: "",
@@ -25,13 +32,29 @@ export function ProductCreateForm({ onCreated, onClose }: ProductCreateFormProps
   const { products, upsertProduct, showNotification } = useAppContext();
   const [form, setForm] = useState(INITIAL_FORM);
   const [errors, setErrors] = useState<Record<string, string>>({});
+<<<<<<< HEAD
+=======
+  const [submitting, setSubmitting] = useState(false);
+
+  const categories = useMemo(
+    () =>
+      Array.from(new Set(products.map((product) => product.categoria).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, "es")
+      ),
+    [products]
+  );
+>>>>>>> master
 
   const resetForm = () => {
     setForm(INITIAL_FORM);
     setErrors({});
   };
 
+<<<<<<< HEAD
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+=======
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+>>>>>>> master
     event.preventDefault();
     const nextErrors: Record<string, string> = {};
 
@@ -82,7 +105,22 @@ export function ProductCreateForm({ onCreated, onClose }: ProductCreateFormProps
       descripcion: form.descripcion.trim()
     };
 
+<<<<<<< HEAD
     upsertProduct(payload);
+=======
+    setSubmitting(true);
+    const result = await upsertProduct(payload, { isNew: true });
+    setSubmitting(false);
+
+    if (!result.ok) {
+      showNotification({
+        message: result.message ?? "No pudimos guardar el producto.",
+        kind: "error"
+      });
+      return;
+    }
+
+>>>>>>> master
     showNotification({
       message: "Producto creado correctamente",
       kind: "success",
@@ -128,6 +166,7 @@ export function ProductCreateForm({ onCreated, onClose }: ProductCreateFormProps
       <div className="form-row">
         <div className="form-group">
           <label htmlFor="newCategoria">Categoría</label>
+<<<<<<< HEAD
           <select
             id="newCategoria"
             value={form.categoria}
@@ -141,6 +180,21 @@ export function ProductCreateForm({ onCreated, onClose }: ProductCreateFormProps
               </option>
             ))}
           </select>
+=======
+          <input
+            id="newCategoria"
+            type="text"
+            value={form.categoria}
+            onChange={(event) => setForm((prev) => ({ ...prev, categoria: event.target.value }))}
+            list="productCategories"
+            required
+          />
+          <datalist id="productCategories">
+            {categories.map((cat) => (
+              <option key={cat} value={cat} />
+            ))}
+          </datalist>
+>>>>>>> master
           <small className="help">{errors.categoria}</small>
         </div>
         <div className="form-group">
@@ -219,8 +273,13 @@ export function ProductCreateForm({ onCreated, onClose }: ProductCreateFormProps
       </div>
 
       <div className="form-actions">
+<<<<<<< HEAD
         <button className="btn btn--principal" type="submit">
           Guardar producto
+=======
+        <button className="btn btn--principal" type="submit" disabled={submitting}>
+          {submitting ? "Guardando…" : "Guardar producto"}
+>>>>>>> master
         </button>
         <button
           className="btn"

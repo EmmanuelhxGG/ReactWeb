@@ -1,7 +1,16 @@
+<<<<<<< HEAD
 import { Link, useParams } from "react-router-dom";
 import { BLOG_POSTS } from "../data/blogPosts";
 import type { BlogPost } from "../types";
 import { CommentsSection } from "../components/blog/CommentsSection";
+=======
+import { useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { CommentsSection } from "../components/blog/CommentsSection";
+import { useAppContext } from "../context/AppContext";
+import { fetchBlogPost } from "../services/blog";
+import type { BlogPost } from "../types";
+>>>>>>> master
 
 function renderBlock(block: BlogPost["body"][number], index: number) {
   if (block.type === "p") {
@@ -32,14 +41,66 @@ function renderBlock(block: BlogPost["body"][number], index: number) {
 
 export function BlogDetallePage() {
   const { slug } = useParams();
+<<<<<<< HEAD
   const post = BLOG_POSTS.find((entry) => entry.slug === slug);
 
   if (!post) {
+=======
+  const { hydrateComments } = useAppContext();
+  const [post, setPost] = useState<BlogPost | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!slug) {
+      setPost(null);
+      setError("Artículo no encontrado");
+      setLoading(false);
+      return;
+    }
+    let isMounted = true;
+    setLoading(true);
+    fetchBlogPost(slug)
+      .then(({ post: entry, comments }) => {
+        if (!isMounted) return;
+        setPost(entry);
+        hydrateComments(entry.slug, comments);
+        setError(null);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setPost(null);
+        setError("Es posible que el artículo haya sido movido o eliminado.");
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [slug, hydrateComments]);
+
+  if (loading) {
+    return (
+      <div className="container" style={{ padding: "48px 0" }}>
+        <p className="muted">Cargando artículo…</p>
+      </div>
+    );
+  }
+
+  if (error || !post) {
+>>>>>>> master
     return (
       <div className="container" style={{ padding: "48px 0" }}>
         <div className="card" style={{ padding: "32px", textAlign: "center" }}>
           <h1 className="font-brand">Artículo no encontrado</h1>
+<<<<<<< HEAD
           <p className="muted">Es posible que el artículo haya sido movido o eliminado.</p>
+=======
+          <p className="muted">{error}</p>
+>>>>>>> master
           <Link className="btn btn--principal" to="/blog">
             Volver al blog
           </Link>
@@ -68,7 +129,11 @@ export function BlogDetallePage() {
         {post.body.map((block, index) => renderBlock(block, index))}
       </div>
 
+<<<<<<< HEAD
       <CommentsSection postId={post.id} />
+=======
+      <CommentsSection postSlug={post.slug} />
+>>>>>>> master
     </article>
   );
 }

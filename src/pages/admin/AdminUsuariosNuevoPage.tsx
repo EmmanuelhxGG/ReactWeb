@@ -1,9 +1,17 @@
+<<<<<<< HEAD
 import { useState } from "react";
+=======
+import { useMemo, useState } from "react";
+>>>>>>> master
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppContext } from "../../context/AppContext";
 import { cleanRun, isRunValid, isEmailAllowed } from "../../utils/validators";
+<<<<<<< HEAD
 import { REGIONS } from "../../data/regions";
+=======
+import { useRegions } from "../../hooks/useRegions";
+>>>>>>> master
 
 const INITIAL_FORM = {
   run: "",
@@ -21,11 +29,23 @@ export function AdminUsuariosNuevoPage() {
   const navigate = useNavigate();
   const { upsertAdminUser, adminUsers, showNotification } = useAppContext();
   const [form, setForm] = useState(INITIAL_FORM);
+<<<<<<< HEAD
   const regionOptions = Object.keys(REGIONS).sort((a, b) => a.localeCompare(b, "es"));
   const comunaOptions = (REGIONS[form.region] || []).slice().sort((a, b) => a.localeCompare(b, "es"));
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+=======
+  const { regions: regionsMap, loading: regionsLoading, error: regionsError } = useRegions();
+  const regionOptions = useMemo(() => Object.keys(regionsMap).sort((a, b) => a.localeCompare(b, "es")), [regionsMap]);
+  const comunaOptions = useMemo(
+    () => ((regionsMap[form.region] || []).slice().sort((a, b) => a.localeCompare(b, "es"))),
+    [form.region, regionsMap]
+  );
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+>>>>>>> master
     event.preventDefault();
     const next: Record<string, string> = {};
 
@@ -56,7 +76,11 @@ export function AdminUsuariosNuevoPage() {
       return;
     }
 
+<<<<<<< HEAD
     upsertAdminUser({
+=======
+    const result = await upsertAdminUser({
+>>>>>>> master
       run: form.run.toUpperCase(),
       nombre: form.nombre.trim(),
       apellidos: form.apellidos.trim(),
@@ -66,7 +90,20 @@ export function AdminUsuariosNuevoPage() {
       comuna: form.comuna.trim() || undefined
     });
 
+<<<<<<< HEAD
     setForm(INITIAL_FORM);
+=======
+    if (!result.ok) {
+      showNotification({
+        message: result.message ?? "No pudimos registrar al colaborador.",
+        kind: "error"
+      });
+      return;
+    }
+
+    setForm(INITIAL_FORM);
+    setErrors({});
+>>>>>>> master
     showNotification({
       message: "Usuario administrativo creado",
       kind: "success",
@@ -153,6 +190,10 @@ export function AdminUsuariosNuevoPage() {
               id="adminRegion"
               value={form.region}
               onChange={(event) => setForm((prev) => ({ ...prev, region: event.target.value, comuna: "" }))}
+<<<<<<< HEAD
+=======
+              disabled={regionsLoading}
+>>>>>>> master
             >
               <option value="">Seleccione</option>
               {regionOptions.map((r) => (
@@ -161,6 +202,10 @@ export function AdminUsuariosNuevoPage() {
                 </option>
               ))}
             </select>
+<<<<<<< HEAD
+=======
+            {regionsError && <small className="help">{regionsError}</small>}
+>>>>>>> master
           </div>
           <div className="form-group">
             <label htmlFor="adminComuna">Comuna</label>
@@ -168,7 +213,11 @@ export function AdminUsuariosNuevoPage() {
               id="adminComuna"
               value={form.comuna}
               onChange={(event) => setForm((prev) => ({ ...prev, comuna: event.target.value }))}
+<<<<<<< HEAD
               disabled={!form.region}
+=======
+              disabled={!form.region || regionsLoading}
+>>>>>>> master
             >
               <option value="">Seleccione</option>
               {comunaOptions.map((c) => (

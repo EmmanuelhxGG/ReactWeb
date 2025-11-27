@@ -16,7 +16,11 @@ export function AdminLoginPage() {
     }
   }, [adminSession, navigate]);
 
+<<<<<<< HEAD
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+=======
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+>>>>>>> master
     event.preventDefault();
     const nextErrors: typeof errors = {};
     const trimmedEmail = email.trim().toLowerCase();
@@ -36,7 +40,11 @@ export function AdminLoginPage() {
       return;
     }
 
+<<<<<<< HEAD
     const result = adminLogin(trimmedEmail, password.trim());
+=======
+    const result = await adminLogin(trimmedEmail, password.trim());
+>>>>>>> master
     if (!result.ok) {
       setErrors({ form: result.message || "Acceso denegado" });
       return;

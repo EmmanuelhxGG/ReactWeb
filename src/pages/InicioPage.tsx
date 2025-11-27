@@ -1,14 +1,53 @@
+<<<<<<< HEAD
 import { Link } from "react-router-dom";
 import { useAppContext } from "../context/AppContext";
 import { formatMoney } from "../utils/format";
 import { BLOG_POSTS } from "../data/blogPosts";
+=======
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { useAppContext } from "../context/AppContext";
+import { formatMoney } from "../utils/format";
+import type { BlogPost } from "../types";
+import { fetchBlogSummaries } from "../services/blog";
+>>>>>>> master
 
 const FEATURED_IDS = ["TC001", "PSA002", "PSA001"];
 
 export function InicioPage() {
   const { storefrontProducts, getProductPricing } = useAppContext();
   const featured = storefrontProducts.filter((p) => FEATURED_IDS.includes(p.id)).slice(0, 3);
+<<<<<<< HEAD
   const [blog1, blog2] = BLOG_POSTS;
+=======
+  const [blogPosts, setBlogPosts] = useState<BlogPost[]>([]);
+  const [blogLoading, setBlogLoading] = useState(true);
+  const [blogError, setBlogError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const loadPosts = async () => {
+      try {
+        const data = await fetchBlogSummaries();
+        if (!active) return;
+        setBlogPosts(data.slice(0, 2));
+        setBlogError(null);
+      } catch (error) {
+        console.error("No se pudieron cargar las novedades del blog", error);
+        if (!active) return;
+        setBlogError("No pudimos cargar las últimas novedades del blog.");
+      } finally {
+        if (active) {
+          setBlogLoading(false);
+        }
+      }
+    };
+    void loadPosts();
+    return () => {
+      active = false;
+    };
+  }, []);
+>>>>>>> master
 
   return (
     <div className="home">
@@ -74,6 +113,7 @@ export function InicioPage() {
         <div className="container">
           <h2 className="section-title">Últimas Novedades del Blog</h2>
           <div className="blog__grid">
+<<<<<<< HEAD
             {[blog1, blog2].map((post) => (
               <article className="blog-card" key={post.id}>
                 <img
@@ -91,6 +131,31 @@ export function InicioPage() {
                 </div>
               </article>
             ))}
+=======
+            {blogLoading && <p className="muted">Cargando novedades…</p>}
+            {!blogLoading && blogError && <p className="muted">{blogError}</p>}
+            {!blogLoading && !blogError && blogPosts.length === 0 && (
+              <p className="muted">Aún no hay publicaciones disponibles.</p>
+            )}
+            {!blogLoading && !blogError &&
+              blogPosts.map((post) => (
+                <article className="blog-card" key={post.id}>
+                  <img
+                    className="blog-card__image"
+                    src={post.hero.image || "/img/blog-placeholder.jpg"}
+                    alt={post.title}
+                    loading="lazy"
+                  />
+                  <div className="blog-card__content">
+                    <h3>{post.title}</h3>
+                    <p>{post.excerpt}</p>
+                    <Link className="link link--read-more" to={`/blog/${post.slug}`}>
+                      Leer más
+                    </Link>
+                  </div>
+                </article>
+              ))}
+>>>>>>> master
           </div>
           <div className="center-btn">
             <Link className="btn btn--primary" to="/blog">

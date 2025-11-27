@@ -2,7 +2,11 @@ import { useCallback, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppContext } from "../context/AppContext";
+<<<<<<< HEAD
 import { REGIONS } from "../data/regions";
+=======
+import { useRegions } from "../hooks/useRegions";
+>>>>>>> master
 import { computeAge, parseLocalDate } from "../utils/dates";
 import { cleanRun, formatRun, isEmailAllowed, isRunValid } from "../utils/validators";
 
@@ -30,6 +34,10 @@ const MAX_AGE = 110;
 export function RegistroPage() {
   const navigate = useNavigate();
   const { registerCustomer, showNotification } = useAppContext();
+<<<<<<< HEAD
+=======
+  const { regions: regionsMap, loading: regionsLoading, error: regionsError } = useRegions();
+>>>>>>> master
 
   const [runValue, setRunValue] = useState("");
   const [runDisplay, setRunDisplay] = useState("");
@@ -154,11 +162,22 @@ export function RegistroPage() {
     setBirthError(message);
   };
 
+<<<<<<< HEAD
   const regionOptions = useMemo(() => Object.keys(REGIONS).sort((a, b) => a.localeCompare(b, "es")), []);
   const comunaOptions = useMemo(() => {
     const list = REGIONS[region] || [];
     return list.slice().sort((a, b) => a.localeCompare(b, "es"));
   }, [region]);
+=======
+  const regionOptions = useMemo(
+    () => Object.keys(regionsMap).sort((a, b) => a.localeCompare(b, "es")),
+    [regionsMap]
+  );
+  const comunaOptions = useMemo(() => {
+    const list = regionsMap[region] || [];
+    return list.slice().sort((a, b) => a.localeCompare(b, "es"));
+  }, [regionsMap, region]);
+>>>>>>> master
 
   const focusField = (field: string) => {
     const map: Record<string, string> = {
@@ -261,14 +280,22 @@ export function RegistroPage() {
     return true;
   };
 
+<<<<<<< HEAD
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+=======
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+>>>>>>> master
     event.preventDefault();
     if (!validate()) return;
 
     const nombresNormalized = sanitizeNameInput(nombres).trim();
     const apellidosNormalized = sanitizeNameInput(apellidos).trim();
 
+<<<<<<< HEAD
     const result = registerCustomer({
+=======
+    const result = await registerCustomer({
+>>>>>>> master
       run: runValue,
       tipo: "Cliente",
       nombre: nombresNormalized,
@@ -413,6 +440,10 @@ export function RegistroPage() {
                   setRegion(event.target.value);
                   setComuna("");
                 }}
+<<<<<<< HEAD
+=======
+                disabled={regionsLoading}
+>>>>>>> master
                 aria-invalid={Boolean(errors.region)}
               >
                 <option value="">Seleccione</option>
@@ -422,7 +453,13 @@ export function RegistroPage() {
                   </option>
                 ))}
               </select>
+<<<<<<< HEAD
               <small className={`help${errors.region ? " help--error" : ""}`}>{errors.region}</small>
+=======
+              <small className={`help${errors.region ? " help--error" : ""}`}>
+                {errors.region || regionsError}
+              </small>
+>>>>>>> master
             </div>
             <div>
               <label htmlFor="comuna">Comuna</label>
@@ -431,7 +468,11 @@ export function RegistroPage() {
                 className={`form-control${errors.comuna ? " form-control--error" : ""}`}
                 value={comuna}
                 onChange={(event) => setComuna(event.target.value)}
+<<<<<<< HEAD
                 disabled={!region}
+=======
+                disabled={!region || regionsLoading}
+>>>>>>> master
                 aria-invalid={Boolean(errors.comuna)}
               >
                 <option value="">Seleccione</option>

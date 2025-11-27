@@ -4,13 +4,21 @@ import { useAppContext } from "../../context/AppContext";
 import { timeAgo } from "../../utils/timeAgo";
 
 interface Props {
+<<<<<<< HEAD
   postId: string;
+=======
+  postSlug: string;
+>>>>>>> master
   title?: string;
   emptyMessage?: string;
   placeholder?: string;
 }
 
+<<<<<<< HEAD
 export function CommentsSection({ postId, title, emptyMessage, placeholder }: Props) {
+=======
+export function CommentsSection({ postSlug, title, emptyMessage, placeholder }: Props) {
+>>>>>>> master
   const {
     comments,
     customerSession,
@@ -18,7 +26,11 @@ export function CommentsSection({ postId, title, emptyMessage, placeholder }: Pr
     editComment,
     deleteComment
   } = useAppContext();
+<<<<<<< HEAD
   const list = comments[postId] || [];
+=======
+  const list = comments[postSlug] || [];
+>>>>>>> master
   const sectionTitle = title || "Comentarios";
   const emptyLabel = emptyMessage || "Aún no hay comentarios. ¡Sé el primero!";
   const inputPlaceholder = placeholder || "¿Qué te pareció este artículo?";
@@ -28,14 +40,22 @@ export function CommentsSection({ postId, title, emptyMessage, placeholder }: Pr
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
 
+<<<<<<< HEAD
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+=======
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+>>>>>>> master
     event.preventDefault();
     const text = draft.trim();
     if (!text) {
       setError("Escribe algo.");
       return;
     }
+<<<<<<< HEAD
     const result = addComment(postId, text);
+=======
+    const result = await addComment(postSlug, text);
+>>>>>>> master
     if (!result.ok) {
       setError(result.message || "No pudimos publicar tu comentario.");
       return;
@@ -52,7 +72,11 @@ export function CommentsSection({ postId, title, emptyMessage, placeholder }: Pr
   const saveEdit = (id: string) => {
     const text = editDraft.trim();
     if (!text) return;
+<<<<<<< HEAD
     editComment(postId, id, text);
+=======
+    editComment(postSlug, id, text);
+>>>>>>> master
     setEditingId(null);
     setEditDraft("");
   };
@@ -120,7 +144,11 @@ export function CommentsSection({ postId, title, emptyMessage, placeholder }: Pr
                       <button
                         className="btn btn--ghost btn-sm"
                         type="button"
+<<<<<<< HEAD
                         onClick={() => deleteComment(postId, comment.id)}
+=======
+                        onClick={() => deleteComment(postSlug, comment.id)}
+>>>>>>> master
                       >
                         Eliminar
                       </button>

@@ -35,6 +35,10 @@ export type UserAddress = {
   referencia?: string;
   createdAt: number;
   updatedAt: number;
+<<<<<<< HEAD
+=======
+  primary?: boolean;
+>>>>>>> master
 };
 
 export type UserPreferences = {
@@ -48,8 +52,14 @@ export type UserPreferences = {
 export type AccountStatus = "active" | "inactive";
 
 export type CustomerUser = {
+<<<<<<< HEAD
   run: string;
   tipo: string;
+=======
+  id?: string;
+  run: string;
+  tipo?: string;
+>>>>>>> master
   nombre: string;
   apellidos: string;
   email: string;
@@ -58,7 +68,11 @@ export type CustomerUser = {
   comuna: string;
   direccion: string;
   phone?: string;
+<<<<<<< HEAD
   pass: string;
+=======
+  pass?: string;
+>>>>>>> master
   promoCode?: string;
   felices50?: boolean;
   createdAt: number;
@@ -68,6 +82,10 @@ export type CustomerUser = {
 };
 
 export type AdminUser = {
+<<<<<<< HEAD
+=======
+  id?: string;
+>>>>>>> master
   run: string;
   nombre: string;
   apellidos: string;
@@ -77,9 +95,18 @@ export type AdminUser = {
   comuna?: string;
   direccion?: string;
   fnac?: string;
+<<<<<<< HEAD
 };
 
 export type CustomerSession = {
+=======
+  phone?: string;
+  status?: AccountStatus;
+};
+
+export type CustomerSession = {
+  id?: string;
+>>>>>>> master
   email: string;
   nombre?: string;
   fnac?: string;
@@ -152,9 +179,17 @@ export type BlogPost = {
 
 export type Order = {
   id: string;
+<<<<<<< HEAD
   cliente: string;
   total: number;
   estado: string;
+=======
+  orderCode?: string;
+  cliente: string;
+  total: number;
+  estado: string;
+  statusRaw?: string;
+>>>>>>> master
   items: OrderItem[];
   subtotal: number;
   discountTotal: number;

@@ -22,8 +22,16 @@ export function AdminUsuariosPage() {
   }, [adminUsers]);
 
   const extraClients = useMemo(() => {
+<<<<<<< HEAD
     const staffEmails = new Set(staffUsers.map((user) => user.correo.toLowerCase()));
     return adminUsers.filter((user) => !staffEmails.has(user.correo.toLowerCase()));
+=======
+    const staffEmails = new Set(staffUsers.map((user) => user.correo?.toLowerCase() ?? ""));
+    return adminUsers.filter((user) => {
+      const email = user.correo?.toLowerCase() ?? "";
+      return !staffEmails.has(email);
+    });
+>>>>>>> master
   }, [adminUsers, staffUsers]);
 
   const clientRows = useMemo(() => {
@@ -68,14 +76,23 @@ export function AdminUsuariosPage() {
     });
 
     extraClients.forEach((user) => {
+<<<<<<< HEAD
       const key = user.correo.toLowerCase();
       if (rows.has(key)) return;
+=======
+      const key = user.correo?.toLowerCase() ?? "";
+      if (!key || rows.has(key)) return;
+>>>>>>> master
       rows.set(key, {
         key: `staff-${user.correo}`,
         nombre: user.nombre,
         apellidos: user.apellidos,
         run: formatRun(user.run) || user.run || "-",
+<<<<<<< HEAD
         correo: user.correo,
+=======
+        correo: user.correo ?? "-",
+>>>>>>> master
         region: user.region || "-",
         comuna: user.comuna || "-",
         edadLabel: "Edad no registrada",

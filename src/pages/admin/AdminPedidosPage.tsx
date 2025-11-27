@@ -5,7 +5,11 @@ import { describeBenefitLabel, formatMoney } from "../../utils/format";
 const ESTADOS = ["Pendiente", "Preparando", "Despachado", "Entregado"];
 
 export function AdminPedidosPage() {
+<<<<<<< HEAD
   const { orders, updateOrders } = useAppContext();
+=======
+  const { orders, changeOrderStatus, showNotification } = useAppContext();
+>>>>>>> master
   const [selected, setSelected] = useState<string | null>(null);
 
   const resumen = useMemo(() => {
@@ -21,10 +25,18 @@ export function AdminPedidosPage() {
     setSelected((prev) => (prev === id ? null : id));
   };
 
+<<<<<<< HEAD
   const cambiarEstado = (id: string, estado: string) => {
     updateOrders(
       orders.map((order) => (order.id === id ? { ...order, estado } : order))
     );
+=======
+  const cambiarEstado = async (id: string, estado: string) => {
+    const result = await changeOrderStatus(id, estado);
+    if (!result.ok) {
+      showNotification({ message: result.message ?? "No se pudo actualizar el pedido", kind: "error" });
+    }
+>>>>>>> master
   };
 
   return (

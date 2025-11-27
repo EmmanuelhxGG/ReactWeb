@@ -44,6 +44,7 @@ export function AdminProductosPage() {
           });
           return;
         }
+<<<<<<< HEAD
         upsertProduct({ ...product, stock: Math.floor(parsed) });
         showNotification({
           message: "Stock actualizado.",
@@ -51,6 +52,26 @@ export function AdminProductosPage() {
           mode: "dialog",
           actionLabel: "Listo"
         });
+=======
+        void (async () => {
+          const result = await upsertProduct({ ...product, stock: Math.floor(parsed) });
+          if (!result.ok) {
+            showNotification({
+              message: result.message ?? "No pudimos actualizar el stock.",
+              kind: "error",
+              mode: "dialog",
+              actionLabel: "Aceptar"
+            });
+            return;
+          }
+          showNotification({
+            message: "Stock actualizado.",
+            kind: "success",
+            mode: "dialog",
+            actionLabel: "Listo"
+          });
+        })();
+>>>>>>> master
       }
     });
   };
@@ -63,6 +84,7 @@ export function AdminProductosPage() {
       actionLabel: "Eliminar",
       cancelLabel: "Cancelar",
       onAction: () => {
+<<<<<<< HEAD
         removeProduct(product.id);
         showNotification({
           message: `${product.nombre} eliminado.`,
@@ -70,6 +92,26 @@ export function AdminProductosPage() {
           mode: "dialog",
           actionLabel: "Aceptar"
         });
+=======
+        void (async () => {
+          const result = await removeProduct(product.id);
+          if (!result.ok) {
+            showNotification({
+              message: result.message ?? "No pudimos eliminar el producto.",
+              kind: "error",
+              mode: "dialog",
+              actionLabel: "Aceptar"
+            });
+            return;
+          }
+          showNotification({
+            message: `${product.nombre} eliminado.`,
+            kind: "success",
+            mode: "dialog",
+            actionLabel: "Aceptar"
+          });
+        })();
+>>>>>>> master
       }
     });
   };

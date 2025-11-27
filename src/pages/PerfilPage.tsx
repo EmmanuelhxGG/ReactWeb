@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAppContext } from "../context/AppContext";
+<<<<<<< HEAD
 import { REGIONS } from "../data/regions";
+=======
+import { useRegions } from "../hooks/useRegions";
+>>>>>>> master
 import { computeAge } from "../utils/dates";
 import { describeBenefitLabel, formatMoney } from "../utils/format";
 import { formatRun } from "../utils/validators";
@@ -33,6 +37,10 @@ const normalizeNameInput = (value: string) =>
 export function PerfilPage() {
   const navigate = useNavigate();
   const { customerSession, currentCustomer, updateCustomer, logoutCustomer, showNotification, orders } = useAppContext();
+<<<<<<< HEAD
+=======
+  const { regions: regionsMap, loading: regionsLoading, error: regionsError } = useRegions();
+>>>>>>> master
 
   const currentUser = currentCustomer;
   const accountStatus = currentUser?.status === "inactive" ? "Desactivada" : "Activada";
@@ -134,11 +142,54 @@ export function PerfilPage() {
     resetProfileForm();
   }, [resetProfileForm]);
 
+<<<<<<< HEAD
   const regionOptions = useMemo(() => Object.keys(REGIONS).sort((a, b) => a.localeCompare(b, "es")), []);
   const comunaOptions = useMemo(() => {
     const list = REGIONS[form.region] || [];
     return list.slice().sort((a, b) => a.localeCompare(b, "es"));
   }, [form.region]);
+=======
+  const regionOptions = useMemo(
+    () => Object.keys(regionsMap).sort((a, b) => a.localeCompare(b, "es")),
+    [regionsMap]
+  );
+  const comunaOptions = useMemo(() => {
+    const list = regionsMap[form.region] || [];
+    return list.slice().sort((a, b) => a.localeCompare(b, "es"));
+  }, [form.region, regionsMap]);
+
+  useEffect(() => {
+    if (!regionsLoading && form.region && !regionsMap[form.region]) {
+      setForm((prev) => ({ ...prev, region: "", comuna: "" }));
+    }
+  }, [regionsLoading, regionsMap, form.region]);
+
+  useEffect(() => {
+    if (!regionsLoading && form.comuna && !comunaOptions.includes(form.comuna)) {
+      setForm((prev) => ({ ...prev, comuna: "" }));
+    }
+  }, [regionsLoading, comunaOptions, form.comuna]);
+
+  useEffect(() => {
+    if (regionsLoading || !extraAddresses.length) return;
+    let changed = false;
+    const sanitized = extraAddresses.map((address) => {
+      const regionCommunes = regionsMap[address.region] || [];
+      if (address.region && !regionsMap[address.region]) {
+        changed = true;
+        return { ...address, region: "", comuna: "" };
+      }
+      if (address.comuna && !regionCommunes.includes(address.comuna)) {
+        changed = true;
+        return { ...address, comuna: "" };
+      }
+      return address;
+    });
+    if (changed) {
+      setExtraAddresses(sanitized);
+    }
+  }, [extraAddresses, regionsLoading, regionsMap]);
+>>>>>>> master
 
   const handleExtraChange = (id: string, field: "alias" | "direccion" | "region" | "comuna" | "referencia", value: string) => {
     setExtraAddresses((prev) =>
@@ -269,7 +320,11 @@ export function PerfilPage() {
     return (
       <main className="container" style={{ padding: "48px 0" }}>
         <div className="card" style={{ padding: "32px", textAlign: "center" }}>
+<<<<<<< HEAD
           <p className="muted">Cargando información de tu cuenta…</p>
+=======
+          <p className="muted">Cargando información de tu cuenta...</p>
+>>>>>>> master
         </div>
       </main>
     );
@@ -313,7 +368,11 @@ export function PerfilPage() {
     });
   };
 
+<<<<<<< HEAD
   const handleProfileSubmit = (event: FormEvent<HTMLFormElement>) => {
+=======
+  const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
+>>>>>>> master
     event.preventDefault();
     const nextErrors: Record<string, string> = {};
 
@@ -433,7 +492,11 @@ export function PerfilPage() {
     });
     const addressesPayload = [primaryAddress, ...extrasPayload].slice(0, ADDRESS_LIMIT);
 
+<<<<<<< HEAD
     updateCustomer({
+=======
+    const result = await updateCustomer({
+>>>>>>> master
       nombre: normalizedNombre,
       apellidos: normalizedApellidos,
       direccion: primaryAddress.direccion,
@@ -449,11 +512,22 @@ export function PerfilPage() {
         primaryAddressId: primaryAddress.id
       }
     });
+<<<<<<< HEAD
+=======
+    if (!result.ok) {
+      showNotification({ message: result.message ?? "No pudimos actualizar tus datos", kind: "error" });
+      return;
+    }
+>>>>>>> master
     showNotification({ message: "Datos actualizados correctamente.", kind: "success" });
     setIsEditing(false);
   };
 
+<<<<<<< HEAD
   const handlePasswordSubmit = (event: FormEvent<HTMLFormElement>) => {
+=======
+  const handlePasswordSubmit = async (event: FormEvent<HTMLFormElement>) => {
+>>>>>>> master
     event.preventDefault();
     const next: Record<string, string> = {};
 
@@ -479,14 +553,28 @@ export function PerfilPage() {
     }
 
     setPassErrors({});
+<<<<<<< HEAD
     updateCustomer({ pass: passwordForm.next });
+=======
+    const result = await updateCustomer({ pass: passwordForm.next });
+    if (!result.ok) {
+      showNotification({ message: result.message ?? "No pudimos actualizar tu contraseña", kind: "error" });
+      return;
+    }
+>>>>>>> master
     setPasswordForm({ current: "", next: "", confirm: "" });
     showNotification({ message: "Contraseña actualizada.", kind: "success" });
   };
 
+<<<<<<< HEAD
   const handleLogout = () => {
     setIsEditing(false);
     logoutCustomer();
+=======
+  const handleLogout = async () => {
+    setIsEditing(false);
+    await logoutCustomer();
+>>>>>>> master
     navigate("/", { replace: true });
   };
 
@@ -682,16 +770,31 @@ export function PerfilPage() {
                           comuna: value === prev.region ? prev.comuna : ""
                         }));
                       }}
+<<<<<<< HEAD
                       aria-invalid={Boolean(errors.region)}
                     >
                       <option value="">Seleccione</option>
+=======
+                      disabled={regionsLoading}
+                      aria-invalid={Boolean(errors.region || regionsError)}
+                    >
+                      <option value="" disabled={regionsLoading}>
+                        {regionsLoading ? "Cargando regiones..." : "Seleccione"}
+                      </option>
+>>>>>>> master
                       {regionOptions.map((region) => (
                         <option key={region} value={region}>
                           {region}
                         </option>
                       ))}
                     </select>
+<<<<<<< HEAD
                     <small className={`help${errors.region ? " help--error" : ""}`}>{errors.region}</small>
+=======
+                    <small className={`help${errors.region || regionsError ? " help--error" : ""}`}>
+                      {errors.region || regionsError || ""}
+                    </small>
+>>>>>>> master
                   </div>
                   <div className="profile-field">
                     <label htmlFor="profileComuna">Comuna</label>
@@ -700,10 +803,19 @@ export function PerfilPage() {
                       className={`form-control${errors.comuna ? " form-control--error" : ""}`}
                       value={form.comuna}
                       onChange={(event) => setForm((prev) => ({ ...prev, comuna: event.target.value }))}
+<<<<<<< HEAD
                       disabled={!form.region}
                       aria-invalid={Boolean(errors.comuna)}
                     >
                       <option value="">Seleccione</option>
+=======
+                      disabled={regionsLoading || !form.region}
+                      aria-invalid={Boolean(errors.comuna)}
+                    >
+                      <option value="">
+                        {regionsLoading ? "Cargando comunas..." : "Seleccione"}
+                      </option>
+>>>>>>> master
                       {comunaOptions.map((comuna) => (
                         <option key={comuna} value={comuna}>
                           {comuna}
@@ -724,7 +836,11 @@ export function PerfilPage() {
                     <p className="muted small">No tienes direcciones adicionales guardadas.</p>
                   ) : (
                     extraAddresses.map((address, index) => {
+<<<<<<< HEAD
                       const communes = (REGIONS[address.region] || []).slice().sort((a, b) => a.localeCompare(b, "es"));
+=======
+                      const communes = (regionsMap[address.region] || []).slice().sort((a, b) => a.localeCompare(b, "es"));
+>>>>>>> master
                       return (
                         <div className="profile-address-card" key={address.id}>
                           <div className="profile-address-card__head">
@@ -785,8 +901,16 @@ export function PerfilPage() {
                                 className="form-control"
                                 value={address.region}
                                 onChange={(event) => handleExtraChange(address.id, "region", event.target.value)}
+<<<<<<< HEAD
                               >
                                 <option value="">Seleccione</option>
+=======
+                                disabled={regionsLoading}
+                              >
+                                <option value="" disabled={regionsLoading}>
+                                  {regionsLoading ? "Cargando regiones..." : "Seleccione"}
+                                </option>
+>>>>>>> master
                                 {regionOptions.map((region) => (
                                   <option key={region} value={region}>
                                     {region}
@@ -800,9 +924,17 @@ export function PerfilPage() {
                                 className="form-control"
                                 value={address.comuna}
                                 onChange={(event) => handleExtraChange(address.id, "comuna", event.target.value)}
+<<<<<<< HEAD
                                 disabled={!address.region}
                               >
                                 <option value="">Seleccione</option>
+=======
+                                disabled={regionsLoading || !address.region}
+                              >
+                                <option value="">
+                                  {regionsLoading ? "Cargando comunas..." : "Seleccione"}
+                                </option>
+>>>>>>> master
                                 {communes.map((comuna) => (
                                   <option key={comuna} value={comuna}>
                                     {comuna}
@@ -821,7 +953,11 @@ export function PerfilPage() {
                     className="btn btn--ghost btn-sm"
                     type="button"
                     onClick={addExtraAddress}
+<<<<<<< HEAD
                     disabled={extraAddresses.length >= ADDRESS_LIMIT - 1}
+=======
+                    disabled={regionsLoading || extraAddresses.length >= ADDRESS_LIMIT - 1}
+>>>>>>> master
                   >
                     Añadir dirección
                   </button>

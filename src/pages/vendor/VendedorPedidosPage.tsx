@@ -5,14 +5,23 @@ import { describeBenefitLabel, formatMoney } from "../../utils/format";
 const ESTADOS = ["Pendiente", "Preparando", "Despachado", "Entregado"];
 
 export function VendedorPedidosPage() {
+<<<<<<< HEAD
   const { orders, updateOrders, showNotification } = useAppContext();
+=======
+  const { orders, changeOrderStatus, refreshOrders, showNotification } = useAppContext();
+  const [progress, setProgress] = useState<Record<string, boolean>>({});
+>>>>>>> master
   const [selected, setSelected] = useState<string | null>(null);
 
   const toggleDetail = (id: string) => {
     setSelected((prev) => (prev === id ? null : id));
   };
 
+<<<<<<< HEAD
   const advanceStatus = (id: string) => {
+=======
+  const advanceStatus = async (id: string) => {
+>>>>>>> master
     const order = orders.find((item) => item.id === id);
     if (!order) return;
     const currentIndex = ESTADOS.indexOf(order.estado);
@@ -26,9 +35,31 @@ export function VendedorPedidosPage() {
       });
       return;
     }
+<<<<<<< HEAD
     updateOrders(
       orders.map((item) => (item.id === id ? { ...item, estado: nextEstado } : item))
     );
+=======
+    setProgress((prev) => ({ ...prev, [id]: true }));
+    const result = await changeOrderStatus(order.id, nextEstado);
+    if (!result.ok) {
+      showNotification({
+        message: result.message ?? "No pudimos actualizar el pedido.",
+        kind: "error"
+      });
+    } else {
+      showNotification({
+        message: `Estado del pedido actualizado a ${nextEstado}.`,
+        kind: "success"
+      });
+      await refreshOrders();
+    }
+    setProgress((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+>>>>>>> master
   };
 
   return (
@@ -62,8 +93,18 @@ export function VendedorPedidosPage() {
                       <button className="btn-edit" type="button" onClick={() => toggleDetail(order.id)}>
                         {selected === order.id ? "Ocultar" : "Detalle"}
                       </button>
+<<<<<<< HEAD
                       <button className="btn-edit" type="button" onClick={() => advanceStatus(order.id)}>
                         Avanzar estado
+=======
+                      <button
+                        className="btn-edit"
+                        type="button"
+                        onClick={() => void advanceStatus(order.id)}
+                        disabled={Boolean(progress[order.id])}
+                      >
+                        {progress[order.id] ? "Actualizando…" : "Avanzar estado"}
+>>>>>>> master
                       </button>
                     </div>
                   </td>

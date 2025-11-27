@@ -25,7 +25,11 @@ export function LoginPage() {
     }
   }, [customerSession, navigate]);
 
+<<<<<<< HEAD
   const handleCustomerSubmit = (event: FormEvent<HTMLFormElement>) => {
+=======
+  const handleCustomerSubmit = async (event: FormEvent<HTMLFormElement>) => {
+>>>>>>> master
     event.preventDefault();
     const nextErrors: typeof errors = {};
 
@@ -47,7 +51,11 @@ export function LoginPage() {
       return;
     }
 
+<<<<<<< HEAD
     const result = loginCustomer(trimmed, password.trim());
+=======
+    const result = await loginCustomer(trimmed, password.trim());
+>>>>>>> master
     if (!result.ok) {
       setErrors({ form: result.message || "Credenciales inválidas." });
       return;
@@ -62,7 +70,11 @@ export function LoginPage() {
     });
   };
 
+<<<<<<< HEAD
   const handleAdminSubmit = (event: FormEvent<HTMLFormElement>) => {
+=======
+  const handleAdminSubmit = async (event: FormEvent<HTMLFormElement>) => {
+>>>>>>> master
     event.preventDefault();
     const nextErrors: typeof adminErrors = {};
 
@@ -82,7 +94,11 @@ export function LoginPage() {
       return;
     }
 
+<<<<<<< HEAD
     const result = adminLogin(trimmedEmail, adminPassword.trim());
+=======
+    const result = await adminLogin(trimmedEmail, adminPassword.trim());
+>>>>>>> master
     if (!result.ok) {
       setAdminErrors({ form: result.message || "Acceso denegado." });
       return;

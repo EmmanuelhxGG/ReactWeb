@@ -2,15 +2,22 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAppContext } from "../context/AppContext";
 import { formatMoney } from "../utils/format";
+<<<<<<< HEAD
 import type { Order, OrderItem } from "../types";
+=======
+import type { CreateOrderItemRequestDto, CreateOrderRequestDto } from "../services/orders";
+>>>>>>> master
 
 const SHIPPING_OPTIONS = [
   { value: 3000, label: "Envío urbano ($3.000)" },
   { value: 6000, label: "Envío regional ($6.000)" }
 ];
 
+<<<<<<< HEAD
 const SIMPLE_EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
+=======
+>>>>>>> master
 type AddressOption = {
   id: string;
   label: string;
@@ -20,6 +27,11 @@ type AddressOption = {
   referencia?: string;
 };
 
+<<<<<<< HEAD
+=======
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+>>>>>>> master
 export function CarritoPage() {
   const {
     cartTotals,
@@ -36,17 +48,25 @@ export function CarritoPage() {
     currentCustomer,
     updateCustomer,
     openReceiptWindow,
+<<<<<<< HEAD
     products,
     upsertProduct,
     orders,
     updateOrders,
     showNotification
+=======
+    showNotification,
+    placeOrder
+>>>>>>> master
   } = useAppContext();
 
   const { items, subTotal, effectiveSubtotal } = cartTotals;
   const isCartEmpty = items.length === 0;
+<<<<<<< HEAD
   const [guestInfo, setGuestInfo] = useState({ nombre: "", email: "" });
   const [guestErrors, setGuestErrors] = useState<{ nombre?: string; email?: string }>({});
+=======
+>>>>>>> master
 
   const addressOptions = useMemo<AddressOption[]>(() => {
     if (!currentCustomer) return [];
@@ -109,20 +129,54 @@ export function CarritoPage() {
     if (benefits.freeShipping) return;
     setShippingCost(value);
     if (currentCustomer && currentCustomer.prefs?.defaultShip !== value) {
+<<<<<<< HEAD
       updateCustomer({ prefs: { defaultShip: value } });
+=======
+      void updateCustomer({ prefs: { defaultShip: value } });
+>>>>>>> master
     }
   };
 
   const handleAddressChange = (id: string) => {
     setSelectedAddressId(id);
     if (!currentCustomer) return;
+<<<<<<< HEAD
     updateCustomer({
+=======
+    void updateCustomer({
+>>>>>>> master
       prefs: { primaryAddressId: id }
     });
   };
 
+<<<<<<< HEAD
   const handleCheckout = () => {
     if (!items.length) return;
+=======
+  const handleCheckout = async () => {
+    if (!items.length) return;
+    if (!customerSession) {
+      showNotification({
+        message: "Debes iniciar sesión para finalizar tu compra.",
+        kind: "error",
+        mode: "dialog",
+        actionLabel: "Ir a iniciar sesión",
+        onAction: () => {
+          window.location.href = "/login";
+        }
+      });
+      return;
+    }
+    if (!selectedAddressId) {
+      showNotification({
+        message: "Selecciona una dirección de envío desde tu perfil.",
+        kind: "error",
+        mode: "dialog",
+        actionLabel: "Entendido"
+      });
+      return;
+    }
+>>>>>>> master
     const accountStatus = currentCustomer?.status || customerSession?.status;
     if (accountStatus === "inactive") {
       showNotification({
@@ -133,6 +187,7 @@ export function CarritoPage() {
       });
       return;
     }
+<<<<<<< HEAD
     if (!customerSession) {
       const nextErrors: typeof guestErrors = {};
       if (!guestInfo.nombre.trim()) {
@@ -166,6 +221,8 @@ export function CarritoPage() {
       const nextStock = Math.max(0, p.stock - entry.qty);
       upsertProduct({ ...p, stock: nextStock });
     });
+=======
+>>>>>>> master
 
     const benefitList: string[] = [];
     if (benefits.userDisc > 0 && benefits.userLabel) {
@@ -181,6 +238,7 @@ export function CarritoPage() {
       benefitList.push(couponInfo.label || `Cupón ${couponInfo.code}`);
     }
 
+<<<<<<< HEAD
     const perItemDiscount = items.reduce((sum, entry) => sum + Math.max(0, entry.subtotal - entry.pricing.total), 0);
     const shippingDiscount = Math.max(0, shipBeforeCoupons - effectiveShip);
     const couponDiscount = couponInfo.valid ? couponInfo.discount : 0;
@@ -236,6 +294,53 @@ export function CarritoPage() {
     }
     // Clear cart after purchase
     clearCart();
+=======
+    const orderItems: CreateOrderItemRequestDto[] = items.map((entry) => {
+      const labels: string[] = [];
+      if (entry.pricing.discountPerUnit > 0 && benefits.userLabel) {
+        labels.push(benefits.userLabel);
+      }
+      if (entry.product.id === "BDAY001" && benefits.bdayApplied && benefits.bdayLabel) {
+        labels.push(benefits.bdayLabel);
+      }
+      return {
+        productId: entry.product.id,
+        quantity: entry.qty,
+        unitPrice: entry.pricing.unitPrice,
+        originalUnitPrice: entry.pricing.originalUnitPrice,
+        discountPerUnit: entry.pricing.discountPerUnit,
+        benefitLabels: labels.length ? Array.from(new Set(labels)) : null,
+        note: entry.msg ? entry.msg : null
+      } satisfies CreateOrderItemRequestDto;
+    });
+
+    const request: CreateOrderRequestDto = {
+      items: orderItems,
+      shippingCost: effectiveShip,
+      benefitsApplied: benefitList.length ? Array.from(new Set(benefitList)) : null,
+      couponCode: couponInfo.valid ? couponInfo.code ?? null : undefined,
+      couponLabel: couponInfo.valid ? couponInfo.label ?? null : undefined,
+      notes: null,
+      shippingAddressId: UUID_PATTERN.test(selectedAddressId) ? selectedAddressId : null
+    };
+
+    const result = await placeOrder(request);
+    if (!result.ok || !result.order) {
+      showNotification({ message: result.message ?? "No pudimos crear tu pedido", kind: "error" });
+      return;
+    }
+
+    openReceiptWindow(result.order);
+
+    if (benefits.bdayApplied) {
+      const currentYear = new Date().getFullYear();
+      void updateCustomer({ bdayRedeemedYear: currentYear });
+    }
+
+    clearCart();
+    setCoupon("");
+    showNotification({ message: "Pedido registrado con éxito", kind: "success" });
+>>>>>>> master
   };
 
   return (
@@ -353,6 +458,7 @@ export function CarritoPage() {
           )}
           {!customerSession && (
             <div className="guest-checkout">
+<<<<<<< HEAD
               <h4 className="guest-checkout__title">Compra como invitado</h4>
               <label className="guest-checkout__label" htmlFor="guestName">
                 Nombre completo
@@ -383,6 +489,20 @@ export function CarritoPage() {
               <small className="help">{guestErrors.email}</small>
             </div>
           )}
+=======
+              <h4 className="guest-checkout__title">Inicia sesión para comprar</h4>
+              <p className="muted small">
+                Necesitas una cuenta para finalizar tu pedido. {" "}
+                <Link to="/login">Inicia sesión</Link> o {" "}
+                <Link to="/registro">crea una cuenta</Link> en segundos.
+              </p>
+              <p className="muted small" style={{ marginTop: "8px" }}>
+                Si ya estás registrado con correo DUOC, aprovecha tu beneficio de cumpleaños.
+              </p>
+            </div>
+          )}
+
+>>>>>>> master
           <div className="sum-row">
             <span>Subtotal</span>
             <div style={{ marginLeft: "auto", textAlign: "right" }}>
@@ -523,7 +643,16 @@ export function CarritoPage() {
             <strong id="sum-total">{formatMoney(total)}</strong>
           </div>
 
+<<<<<<< HEAD
           <button className="btn btn--primary btn-block" type="button" onClick={handleCheckout} disabled={isCartEmpty}>
+=======
+          <button
+            className="btn btn--primary btn-block"
+            type="button"
+            onClick={handleCheckout}
+            disabled={isCartEmpty || !customerSession || !selectedAddress}
+          >
+>>>>>>> master
             Finalizar compra
           </button>
           <p className="muted small">* No procesa pago real.</p>
